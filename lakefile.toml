@@ -1,0 +1,11 @@
+name = "synthetic_game_theory"
+version = "0.1.0"
+defaultTargets = ["SyntheticGameTheory"]
+
+[[lean_lib]]
+name = "SyntheticGameTheory"
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+rev = "v4.27.0"
