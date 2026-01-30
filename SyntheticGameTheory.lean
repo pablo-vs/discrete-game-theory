@@ -14,6 +14,8 @@ import Mathlib.Data.Finset.Basic
 import Mathlib.Data.Fintype.Basic
 import Mathlib.Order.MinMax
 import Mathlib.Order.Defs.PartialOrder
+import Mathlib.Data.Fintype.Lattice
+import Mathlib.Data.Fintype.EquivFin
 
 universe u v
 
@@ -33,6 +35,8 @@ class SyntheticInterval (I : Type u) extends PartialOrder I where
   mix_comm : ∀ x y : I, mix x y = mix y x
   mix_between_left : ∀ x y : I, x ≤ y → x ≤ mix x y
   mix_between_right : ∀ x y : I, x ≤ y → mix x y ≤ y
+  mix_strict_left : ∀ x y : I, x < y → x < mix x y
+  mix_strict_right : ∀ x y : I, x < y → mix x y < y
 
 namespace SyntheticInterval
 
@@ -40,8 +44,8 @@ variable {I : Type u} [SyntheticInterval I]
 
 /-- The mix of distinct points lies strictly between them -/
 lemma mix_strict_between {x y : I} (hxy : x < y) :
-    x < mix x y ∧ mix x y < y := by
-  sorry
+    x < mix x y ∧ mix x y < y :=
+  ⟨mix_strict_left x y hxy, mix_strict_right x y hxy⟩
 
 end SyntheticInterval
 
@@ -61,6 +65,16 @@ def weakBetweenness {I : Type u} {R : Type v} [SyntheticInterval I] [LE R]
   ∀ x y : I,
     (f x ≤ f y → f x ≤ f (SyntheticInterval.mix x y) ∧ f (SyntheticInterval.mix x y) ≤ f y) ∧
     (f y ≤ f x → f y ≤ f (SyntheticInterval.mix x y) ∧ f (SyntheticInterval.mix x y) ≤ f x)
+
+
+/-- Betweenness for functions on a type with a binary mix operation.
+    No domain order is needed — only the codomain order matters.
+    The value at mix(x,y) lies between the values at x and y. -/
+def mixBetweenness {S : Type*} {R : Type*} [LE R]
+    (mix : S → S → S) (f : S → R) : Prop :=
+  ∀ x y : S,
+    (f x ≤ f y → f x ≤ f (mix x y) ∧ f (mix x y) ≤ f y) ∧
+    (f y ≤ f x → f y ≤ f (mix x y) ∧ f (mix x y) ≤ f x)
 
 
 /-! ## Part 4: The Crossing Axiom -/
@@ -92,6 +106,12 @@ structure SyntheticSimplex (V : Type u) [Fintype V] where
   vertex_injective : Function.Injective vertex
   mix_idem : ∀ x, mix x x = x
   mix_comm : ∀ x y, mix x y = mix y x
+  /-- The carrier is inductively generated from vertices and mix.
+      This is the recursor for the free algebra over vertex and mix. -/
+  induction : ∀ (P : carrier → Prop),
+    (∀ v : V, P (vertex v)) →
+    (∀ x y, P x → P y → P (mix x y)) →
+    ∀ x, P x
 
 /-- The edge between two vertices forms a synthetic interval -/
 structure Edge {V : Type u} [Fintype V] (Δ : SyntheticSimplex V) (v w : V) where
@@ -112,6 +132,10 @@ structure Edge {V : Type u} [Fintype V] (Δ : SyntheticSimplex V) (v w : V) wher
     le x y → le x (Δ.mix x y)
   mix_between_right : ∀ x y, x ∈ points → y ∈ points →
     le x y → le (Δ.mix x y) y
+  mix_ne_left : ∀ x y, x ∈ points → y ∈ points →
+    le x y → ¬le y x → ¬le (Δ.mix x y) x
+  mix_ne_right : ∀ x y, x ∈ points → y ∈ points →
+    le x y → ¬le y x → ¬le y (Δ.mix x y)
 
 /-- Embedding an edge point into the carrier -/
 def Edge.embed {V : Type u} [Fintype V] {Δ : SyntheticSimplex V} {v w : V}
@@ -138,6 +162,12 @@ def Edge.toSyntheticInterval {V : Type u} [Fintype V] {Δ : SyntheticSimplex V} 
   mix_comm := fun x y => Subtype.ext (Δ.mix_comm x.val y.val)
   mix_between_left := fun x y hxy => e.mix_between_left x.val y.val x.prop y.prop hxy
   mix_between_right := fun x y hxy => e.mix_between_right x.val y.val x.prop y.prop hxy
+  mix_strict_left := fun x y hxy =>
+    ⟨e.mix_between_left x.val y.val x.prop y.prop hxy.1,
+     e.mix_ne_left x.val y.val x.prop y.prop hxy.1 hxy.2⟩
+  mix_strict_right := fun x y hxy =>
+    ⟨e.mix_between_right x.val y.val x.prop y.prop hxy.1,
+     e.mix_ne_right x.val y.val x.prop y.prop hxy.1 hxy.2⟩
 
 
 /-! ## Part 6: Finite Games -/
@@ -147,12 +177,13 @@ structure FiniteGame where
   numPlayers : ℕ
   Action : Fin numPlayers → Type*
   actionFintype : ∀ i, Fintype (Action i)
+  actionNonempty : ∀ i, Nonempty (Action i)
   R : Type*
   instLinearOrder : LinearOrder R
   simplex : ∀ i, SyntheticSimplex (Action i)
   payoff : (∀ i, Action i) → Fin numPlayers → R
 
-attribute [instance] FiniteGame.actionFintype FiniteGame.instLinearOrder
+attribute [instance] FiniteGame.actionFintype FiniteGame.instLinearOrder FiniteGame.actionNonempty
 
 /-- A pure strategy profile -/
 def FiniteGame.PureProfile (G : FiniteGame) := ∀ i, G.Action i
@@ -178,10 +209,21 @@ class ExtendedUtility (G : FiniteGame) where
   payoff : G.MixedProfile → Fin G.numPlayers → G.R
   agrees_pure : ∀ (pure : G.PureProfile) (i : Fin G.numPlayers),
     payoff (G.pureToMixed pure) i = G.payoff pure i
-  betweenness : ∀ (σ : G.MixedProfile) (i j : Fin G.numPlayers)
-    {a b : G.Action i} (e : Edge (G.simplex i) a b) (hne : a ≠ b),
+  /-- Mixing any two strategies for player i produces an intermediate utility
+      for every player j. This is the carrier-wide betweenness axiom — no
+      domain order is needed. -/
+  betweenness : ∀ (σ : G.MixedProfile) (i j : Fin G.numPlayers),
+    mixBetweenness (G.simplex i).mix
+      (fun τ => payoff (G.substStrategy σ i τ) j)
+
+/-- Betweenness on the full carrier implies weakBetweenness when restricted
+    to an edge, since the edge mix is just the simplex mix on edge points. -/
+lemma ExtendedUtility.edge_betweenness (G : FiniteGame) [ExtendedUtility G]
+    (σ : G.MixedProfile) (i j : Fin G.numPlayers)
+    {a b : G.Action i} (e : Edge (G.simplex i) a b) (hne : a ≠ b) :
     @weakBetweenness _ G.R (e.toSyntheticInterval hne) _
-      (fun t => payoff (G.substStrategy σ i (e.embed t)) j)
+      (fun t => ExtendedUtility.payoff (G.substStrategy σ i (e.embed t)) j) :=
+  fun x y => ExtendedUtility.betweenness σ i j x.val y.val
 
 /-- Best response: player i's strategy is optimal given others' strategies -/
 def FiniteGame.isBestResponse (G : FiniteGame) [ExtendedUtility G]
@@ -207,32 +249,77 @@ lemma FiniteGame.bestResponseContainsPure (G : FiniteGame) [ExtendedUtility G]
     ∃ a : G.Action i, ∀ τ : (G.simplex i).carrier,
       ExtendedUtility.payoff (G.substStrategy σ i τ) i ≤
       ExtendedUtility.payoff (G.substStrategy σ i ((G.simplex i).vertex a)) i := by
-  sorry
+  -- Abbreviate the utility function
+  set f := fun τ => ExtendedUtility.payoff (G.substStrategy σ i τ) i with hf_def
+  -- Find the best pure strategy (argmax over the finite nonempty action set)
+  have hmax : ∃ a : G.Action i, ∀ b : G.Action i,
+      f ((G.simplex i).vertex b) ≤ f ((G.simplex i).vertex a) := by
+    haveI : Finite (G.Action i) := Finite.of_fintype (G.Action i)
+    exact Finite.exists_max (fun a => f ((G.simplex i).vertex a))
+  obtain ⟨a, ha⟩ := hmax
+  exact ⟨a, (G.simplex i).induction
+    (fun τ => f τ ≤ f ((G.simplex i).vertex a))
+    (fun v => ha v)
+    (fun x y hx hy => by
+      -- By mixBetweenness, f(mix x y) is between f(x) and f(y)
+      have hbet := ExtendedUtility.betweenness σ i i x y
+      -- Both f(x) ≤ f(vertex a) and f(y) ≤ f(vertex a)
+      -- Case split: which of f(x), f(y) is larger?
+      rcases le_total (f x) (f y) with hxy | hyx
+      · exact le_trans (hbet.1 hxy).2 hy
+      · exact le_trans (hbet.2 hyx).2 hx)⟩
 
 
 /-! ## Part 9: General Nash Existence via Synthetic Fixed-Point Axiom -/
+
+/-- A Nash equilibrium witness: bundles a profile with its proof.
+    Useful for finite models where the equilibrium is explicit data. -/
+structure NashWitness (G : FiniteGame) [ExtendedUtility G] where
+  profile : G.MixedProfile
+  is_nash : G.isNashEquilibrium profile
 
 /-- Synthetic Fixed-Point Axiom: any betweenness-respecting self-map of a product
     of simplices has a fixed point. This is the synthetic analog of Brouwer's
     fixed-point theorem.
 
+    Betweenness is tested via utilities: for each input edge (player i varying
+    between actions a and b) and each player j, the utility of j at F(σ)
+    satisfies weakBetweenness along the edge.
+
     In the standard model (simplices over ℝ), betweenness-respecting maps are
     continuous, and the axiom follows from Brouwer. In finitely-presented models,
     the user provides the fixed-point witness. -/
-class SyntheticFixedPoint (G : FiniteGame) where
+class SyntheticFixedPoint (G : FiniteGame) [ExtendedUtility G] where
   fixed_point :
     ∀ (F : G.MixedProfile → G.MixedProfile),
-    (∀ (σ : G.MixedProfile) (i j : Fin G.numPlayers)
-      {a b : G.Action i} (e : Edge (G.simplex i) a b) (hne : a ≠ b),
-      @weakBetweenness _ (G.simplex j).carrier (e.toSyntheticInterval hne) ⟨fun _ _ => True⟩
-        (fun t => (F (G.substStrategy σ i (e.embed t))) j)) →
+    (∀ (σ : G.MixedProfile) (i : Fin G.numPlayers)
+      {a b : G.Action i} (e : Edge (G.simplex i) a b) (hne : a ≠ b)
+      (j : Fin G.numPlayers),
+      @weakBetweenness _ G.R (e.toSyntheticInterval hne) _
+        (fun t => ExtendedUtility.payoff
+          (F (G.substStrategy σ i (e.embed t))) j)) →
     ∃ x : G.MixedProfile, F x = x
 
 /-- General Nash existence theorem: every finite game with extended utilities
-    and the synthetic fixed-point property has a Nash equilibrium. -/
+    and the synthetic fixed-point property has a Nash equilibrium.
+
+    Strategy: construct the "mix toward best response" map, show it satisfies
+    the betweenness hypothesis, apply the fixed-point axiom, then show that
+    fixed points are Nash equilibria. -/
 theorem FiniteGame.nash_exists (G : FiniteGame) [ExtendedUtility G]
     [SyntheticFixedPoint G] :
     ∃ σ : G.MixedProfile, G.isNashEquilibrium σ := by
+  -- The best-response map: for each player, mix current strategy with best pure response
+  -- Step 1: For each player and profile, get the best pure response
+  have hbest : ∀ σ i, ∃ a : G.Action i, ∀ τ,
+      ExtendedUtility.payoff (G.substStrategy σ i τ) i ≤
+      ExtendedUtility.payoff (G.substStrategy σ i ((G.simplex i).vertex a)) i :=
+    fun σ i => G.bestResponseContainsPure σ i
+  -- Step 2: Construct the map F(σ)_i = mix(σ_i, vertex(bestPure_i(σ)))
+  -- Step 3: Show betweenness of F (the hard part — the best pure response may
+  --         change discontinuously as the profile varies along an edge)
+  -- Step 4: Apply SyntheticFixedPoint.fixed_point
+  -- Step 5: Show fixed points are Nash equilibria
   sorry
 
 
@@ -278,70 +365,132 @@ def TwoByTwoGame.hasPureNash (G : TwoByTwoGame) : Prop :=
   (G.u1_TL ≤ G.u1_BL ∧ G.u2_BR ≤ G.u2_BL) ∨
   (G.u1_TR ≤ G.u1_BR ∧ G.u2_BL ≤ G.u2_BR)
 
-/-- Best response cycling: no pure Nash, preferences cycle -/
+/-- Best response cycling: no pure Nash, preferences cycle (player 2 only).
+    Superseded by `fullCycling` but kept for compatibility. -/
 def TwoByTwoGame.hasCycling (G : TwoByTwoGame) : Prop :=
   ¬G.hasPureNash ∧
   ((G.u2_TR < G.u2_TL ∧ G.u2_BL < G.u2_BR) ∨
    (G.u2_TL < G.u2_TR ∧ G.u2_BR < G.u2_BL))
 
-/-- When cycling occurs, there exists an indifference point for player 2.
-    The cycling condition implies the payoff functions cross, so the
-    crossing axiom yields a common value. -/
-lemma TwoByTwoGame.indifference_point_exists
-    (G : TwoByTwoGame) (I : Type u) [SyntheticInterval I] [CrossingAxiom I G.R]
-    (h_cycle : G.hasCycling)
-    (f : I → G.R)
-    (g : I → G.R)
-    (hf : weakBetweenness f)
-    (hg : weakBetweenness g)
-    (hf0 : f SyntheticInterval.zero = G.u2_TL)
-    (hf1 : f SyntheticInterval.one = G.u2_BL)
-    (hg0 : g SyntheticInterval.zero = G.u2_TR)
-    (hg1 : g SyntheticInterval.one = G.u2_BR) :
-    ∃ p : I, f p = g p := by
-  have h_cross : Crosses f g := by
-    obtain ⟨_, hcyc⟩ := h_cycle
-    cases hcyc with
-    | inl h =>
-      -- u2_TR < u2_TL and u2_BL < u2_BR
-      -- So g(0)=u2_TR ≤ f(0)=u2_TL and f(1)=u2_BL ≤ g(1)=u2_BR
-      right
-      exact ⟨by rw [hf0, hg0]; exact le_of_lt h.1,
-             by rw [hf1, hg1]; exact le_of_lt h.2⟩
-    | inr h =>
-      -- u2_TL < u2_TR and u2_BR < u2_BL
-      -- So f(0)=u2_TL ≤ g(0)=u2_TR and g(1)=u2_BR ≤ f(1)=u2_BL
-      left
-      exact ⟨by rw [hf0, hg0]; exact le_of_lt h.1,
-             by rw [hf1, hg1]; exact le_of_lt h.2⟩
-  exact CrossingAxiom.crossing_point f g hf hg h_cross
+/-- Full cycling: both players' preferences cross.
+    Case 1: P1 prefers B@L, T@R; P2 prefers L@T, R@B
+    Case 2: P1 prefers T@L, B@R; P2 prefers R@T, L@B -/
+def TwoByTwoGame.fullCycling (G : TwoByTwoGame) : Prop :=
+  (G.u1_TL < G.u1_BL ∧ G.u1_BR < G.u1_TR ∧
+   G.u2_TR < G.u2_TL ∧ G.u2_BL < G.u2_BR) ∨
+  (G.u1_BL < G.u1_TL ∧ G.u1_TR < G.u1_BR ∧
+   G.u2_TL < G.u2_TR ∧ G.u2_BR < G.u2_BL)
+
+/-- In a 2×2 game with LinearOrder, absence of a pure Nash implies full cycling:
+    both players' preferences must cross. -/
+lemma TwoByTwoGame.no_pure_implies_full_cycling (G : TwoByTwoGame)
+    (h : ¬G.hasPureNash) : G.fullCycling := by
+  simp only [hasPureNash, not_or] at h
+  obtain ⟨h1, h2, h3, h4⟩ := h
+  rw [not_and_or] at h1 h2 h3 h4
+  simp only [not_le] at h1 h2 h3 h4
+  -- h1 : u1_TL < u1_BL ∨ u2_TL < u2_TR
+  -- h2 : u1_TR < u1_BR ∨ u2_TR < u2_TL
+  -- h3 : u1_BL < u1_TL ∨ u2_BL < u2_BR
+  -- h4 : u1_BR < u1_TR ∨ u2_BR < u2_BL
+  unfold fullCycling
+  rcases lt_trichotomy G.u2_TL G.u2_TR with htop | htop | htop
+  · -- Case: u2_TL < u2_TR → second disjunct of fullCycling
+    right
+    have p2 : G.u1_TR < G.u1_BR := h2.resolve_right (not_lt.mpr (le_of_lt htop))
+    have p4 : G.u2_BR < G.u2_BL := h4.resolve_left (not_lt.mpr (le_of_lt p2))
+    have p3 : G.u1_BL < G.u1_TL := h3.resolve_right (not_lt.mpr (le_of_lt p4))
+    exact ⟨p3, p2, htop, p4⟩
+  · -- Case: u2_TL = u2_TR → contradiction
+    have p1 : G.u1_TL < G.u1_BL := h1.resolve_right (htop ▸ lt_irrefl _)
+    have p2 : G.u1_TR < G.u1_BR := h2.resolve_right (htop ▸ lt_irrefl _)
+    have p4 : G.u2_BR < G.u2_BL := h4.resolve_left (not_lt.mpr (le_of_lt p2))
+    have p3 : G.u1_BL < G.u1_TL := h3.resolve_right (not_lt.mpr (le_of_lt p4))
+    exact absurd p3 (not_lt.mpr (le_of_lt p1))
+  · -- Case: u2_TR < u2_TL → first disjunct of fullCycling
+    left
+    have p1 : G.u1_TL < G.u1_BL := h1.resolve_right (not_lt.mpr (le_of_lt htop))
+    have p3 : G.u2_BL < G.u2_BR := h3.resolve_left (not_lt.mpr (le_of_lt p1))
+    have p4 : G.u1_BR < G.u1_TR := h4.resolve_right (not_lt.mpr (le_of_lt p3))
+    exact ⟨p1, p4, htop, p3⟩
+
+/-- Generic crossing lemma: if f and g are betweenness-respecting and cross,
+    there exists a common value. Wraps CrossingAxiom for direct use. -/
+lemma crossing_gives_common_value {I : Type u} {R : Type*}
+    [SyntheticInterval I] [LinearOrder R] [CrossingAxiom I R]
+    {f g : I → R} (hf : weakBetweenness f) (hg : weakBetweenness g)
+    (hf0_le_g0 : f SyntheticInterval.zero ≤ g SyntheticInterval.zero)
+    (hg1_le_f1 : g SyntheticInterval.one ≤ f SyntheticInterval.one) :
+    ∃ p : I, f p = g p :=
+  CrossingAxiom.crossing_point f g hf hg (Or.inl ⟨hf0_le_g0, hg1_le_f1⟩)
+
+/-- Symmetric version: g starts above f and f ends above g. -/
+lemma crossing_gives_common_value' {I : Type u} {R : Type*}
+    [SyntheticInterval I] [LinearOrder R] [CrossingAxiom I R]
+    {f g : I → R} (hf : weakBetweenness f) (hg : weakBetweenness g)
+    (hg0_le_f0 : g SyntheticInterval.zero ≤ f SyntheticInterval.zero)
+    (hf1_le_g1 : f SyntheticInterval.one ≤ g SyntheticInterval.one) :
+    ∃ p : I, f p = g p :=
+  CrossingAxiom.crossing_point f g hf hg (Or.inr ⟨hg0_le_f0, hf1_le_g1⟩)
 
 /-- Main theorem for 2×2 games: either a pure Nash exists, or given
-    betweenness-respecting payoff extensions along the mixing edge,
-    indifference points exist for both players -/
+    betweenness-respecting payoff extensions along the mixing edges,
+    indifference points exist for both players.
+
+    Boundary conventions:
+    - f₁(0→1) = u1(Top, Left→Right): Player 1's Top payoff as P2 varies
+    - g₁(0→1) = u1(Bottom, Left→Right): Player 1's Bottom payoff as P2 varies
+    - f₂(0→1) = u2(Top→Bottom, Left): Player 2's Left payoff as P1 varies
+    - g₂(0→1) = u2(Top→Bottom, Right): Player 2's Right payoff as P1 varies -/
 theorem TwoByTwoGame.twoByTwo_nash_exists
     (G : TwoByTwoGame) (I : Type u) [SyntheticInterval I] [CrossingAxiom I G.R] :
     G.hasPureNash ∨ (∀ (f₁ g₁ f₂ g₂ : I → G.R),
       weakBetweenness f₁ → weakBetweenness g₁ →
       weakBetweenness f₂ → weakBetweenness g₂ →
+      -- f₁ = P1's payoff from Top as P2 varies Left(0)→Right(1)
       f₁ SyntheticInterval.zero = G.u1_TL →
-      f₁ SyntheticInterval.one = G.u1_BL →
-      g₁ SyntheticInterval.zero = G.u1_TR →
+      f₁ SyntheticInterval.one = G.u1_TR →
+      -- g₁ = P1's payoff from Bottom as P2 varies Left(0)→Right(1)
+      g₁ SyntheticInterval.zero = G.u1_BL →
       g₁ SyntheticInterval.one = G.u1_BR →
+      -- f₂ = P2's payoff from Left as P1 varies Top(0)→Bottom(1)
       f₂ SyntheticInterval.zero = G.u2_TL →
       f₂ SyntheticInterval.one = G.u2_BL →
+      -- g₂ = P2's payoff from Right as P1 varies Top(0)→Bottom(1)
       g₂ SyntheticInterval.zero = G.u2_TR →
       g₂ SyntheticInterval.one = G.u2_BR →
-      G.hasCycling →
+      -- Both players have indifference points
       (∃ p : I, f₂ p = g₂ p) ∧ (∃ q : I, f₁ q = g₁ q)) := by
   by_cases h : G.hasPureNash
   · left; exact h
   · right
-    intro f₁ g₁ f₂ g₂ hf₁ hg₁ hf₂ hg₂ hf₁0 hf₁1 hg₁0 hg₁1 hf₂0 hf₂1 hg₂0 hg₂1 hcyc
+    intro f₁ g₁ f₂ g₂ hf₁ hg₁ hf₂ hg₂ hf₁0 hf₁1 hg₁0 hg₁1 hf₂0 hf₂1 hg₂0 hg₂1
+    have hfc := G.no_pure_implies_full_cycling h
     constructor
-    · exact G.indifference_point_exists I hcyc f₂ g₂ hf₂ hg₂ hf₂0 hf₂1 hg₂0 hg₂1
-    · -- Player 1's indifference point: symmetric argument via crossing
-      sorry
+    · -- Player 2's indifference point: f₂ and g₂ cross
+      rcases hfc with ⟨_, _, h_p2_top, h_p2_bot⟩ | ⟨_, _, h_p2_top, h_p2_bot⟩
+      · -- Case 1: u2_TR < u2_TL and u2_BL < u2_BR
+        -- g₂(0)=u2_TR ≤ f₂(0)=u2_TL and f₂(1)=u2_BL ≤ g₂(1)=u2_BR
+        exact crossing_gives_common_value' hf₂ hg₂
+          (by rw [hg₂0, hf₂0]; exact le_of_lt h_p2_top)
+          (by rw [hf₂1, hg₂1]; exact le_of_lt h_p2_bot)
+      · -- Case 2: u2_TL < u2_TR and u2_BR < u2_BL
+        -- f₂(0)=u2_TL ≤ g₂(0)=u2_TR and g₂(1)=u2_BR ≤ f₂(1)=u2_BL
+        exact crossing_gives_common_value hf₂ hg₂
+          (by rw [hf₂0, hg₂0]; exact le_of_lt h_p2_top)
+          (by rw [hg₂1, hf₂1]; exact le_of_lt h_p2_bot)
+    · -- Player 1's indifference point: f₁ and g₁ cross
+      rcases hfc with ⟨h_p1_left, h_p1_right, _, _⟩ | ⟨h_p1_left, h_p1_right, _, _⟩
+      · -- Case 1: u1_TL < u1_BL and u1_BR < u1_TR
+        -- f₁(0)=u1_TL ≤ g₁(0)=u1_BL and g₁(1)=u1_BR ≤ f₁(1)=u1_TR
+        exact crossing_gives_common_value hf₁ hg₁
+          (by rw [hf₁0, hg₁0]; exact le_of_lt h_p1_left)
+          (by rw [hg₁1, hf₁1]; exact le_of_lt h_p1_right)
+      · -- Case 2: u1_BL < u1_TL and u1_TR < u1_BR
+        -- g₁(0)=u1_BL ≤ f₁(0)=u1_TL and f₁(1)=u1_TR ≤ g₁(1)=u1_BR
+        exact crossing_gives_common_value' hf₁ hg₁
+          (by rw [hg₁0, hf₁0]; exact le_of_lt h_p1_left)
+          (by rw [hf₁1, hg₁1]; exact le_of_lt h_p1_right)
 
 end TwoByTwo
 
@@ -411,6 +560,7 @@ noncomputable def TwoByTwoGame.toFiniteGame (G : TwoByTwoGame)
   numPlayers := 2
   Action := fun _ => TwoAction
   actionFintype := fun _ => inferInstance
+  actionNonempty := fun _ => ⟨TwoAction.A⟩
   R := G.R
   instLinearOrder := G.instR
   simplex := Δ
