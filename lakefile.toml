@@ -4,6 +4,7 @@ defaultTargets = ["SyntheticGameTheory"]
 
 [[lean_lib]]
 name = "SyntheticGameTheory"
+globs = ["SyntheticGameTheory.+"]
 
 [[require]]
 name = "mathlib"
