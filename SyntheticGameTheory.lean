@@ -200,6 +200,23 @@ def FiniteGame.substStrategy (G : FiniteGame) (σ : G.MixedProfile)
     (i : Fin G.numPlayers) (τ : (G.simplex i).carrier) : G.MixedProfile :=
   fun j => if h : j = i then h ▸ τ else σ j
 
+/-- `substStrategy` with `G` implicit, for use with notation. -/
+def FiniteGame.MixedProfile.subst {G : FiniteGame} (σ : G.MixedProfile)
+    (i : Fin G.numPlayers) (τ : (G.simplex i).carrier) : G.MixedProfile :=
+  G.substStrategy σ i τ
+
+scoped[FiniteGame] notation σ "[" i " ↦ " τ "]" => FiniteGame.MixedProfile.subst σ i τ
+
+@[simp] lemma FiniteGame.substStrategy_same (G : FiniteGame) (σ : G.MixedProfile)
+    (i : Fin G.numPlayers) (τ : (G.simplex i).carrier) :
+    G.substStrategy σ i τ i = τ := by
+  simp [FiniteGame.substStrategy]
+
+@[simp] lemma FiniteGame.substStrategy_ne (G : FiniteGame) (σ : G.MixedProfile)
+    (i : Fin G.numPlayers) (τ : (G.simplex i).carrier)
+    (j : Fin G.numPlayers) (h : j ≠ i) :
+    G.substStrategy σ i τ j = σ j := by
+  simp [FiniteGame.substStrategy, h]
 
 /-! ## Part 7: Extended Utilities and Best Response -/
 
@@ -367,6 +384,7 @@ def TwoByTwoGame.hasPureNash (G : TwoByTwoGame) : Prop :=
 
 /-- Best response cycling: no pure Nash, preferences cycle (player 2 only).
     Superseded by `fullCycling` but kept for compatibility. -/
+@[deprecated "Use fullCycling instead." (since := "2026-01-31")]
 def TwoByTwoGame.hasCycling (G : TwoByTwoGame) : Prop :=
   ¬G.hasPureNash ∧
   ((G.u2_TR < G.u2_TL ∧ G.u2_BL < G.u2_BR) ∨
@@ -380,6 +398,28 @@ def TwoByTwoGame.fullCycling (G : TwoByTwoGame) : Prop :=
    G.u2_TR < G.u2_TL ∧ G.u2_BL < G.u2_BR) ∨
   (G.u1_BL < G.u1_TL ∧ G.u1_TR < G.u1_BR ∧
    G.u2_TL < G.u2_TR ∧ G.u2_BR < G.u2_BL)
+
+/-- Full cycling implies (deprecated) player-2-only cycling. -/
+lemma TwoByTwoGame.hasCycling_of_fullCycling (G : TwoByTwoGame) :
+    G.fullCycling → G.hasCycling := by
+  intro h
+  rcases h with ⟨h1, h2, h3, h4⟩ | ⟨h1, h2, h3, h4⟩
+  · have hnp : ¬ G.hasPureNash := by
+      intro hnp
+      rcases hnp with h | h | h | h
+      · exact (not_lt_of_ge h.1) h1
+      · exact (not_lt_of_ge h.2) h3
+      · exact (not_lt_of_ge h.2) h4
+      · exact (not_lt_of_ge h.1) h2
+    exact ⟨hnp, Or.inl ⟨h3, h4⟩⟩
+  · have hnp : ¬ G.hasPureNash := by
+      intro hnp
+      rcases hnp with h | h | h | h
+      · exact (not_lt_of_ge h.2) h3
+      · exact (not_lt_of_ge h.1) h2
+      · exact (not_lt_of_ge h.1) h1
+      · exact (not_lt_of_ge h.2) h4
+    exact ⟨hnp, Or.inr ⟨h3, h4⟩⟩
 
 /-- In a 2×2 game with LinearOrder, absence of a pure Nash implies full cycling:
     both players' preferences must cross. -/
@@ -512,11 +552,15 @@ theorem matchingPennies_no_pure_nash : ¬matchingPennies.hasPureNash := by
   simp only [matchingPennies, TwoByTwoGame.hasPureNash]
   rintro (⟨-, h⟩ | ⟨h, -⟩ | ⟨h, -⟩ | ⟨-, h⟩) <;> revert h <;> decide
 
+/-- Matching Pennies exhibits full cycling -/
+theorem matchingPennies_has_fullCycling : matchingPennies.fullCycling := by
+  simp [matchingPennies, TwoByTwoGame.fullCycling]
+
 /-- Matching Pennies exhibits cycling -/
+@[deprecated "Use matchingPennies_has_fullCycling." (since := "2026-01-31")]
 theorem matchingPennies_has_cycling : matchingPennies.hasCycling := by
-  refine ⟨matchingPennies_no_pure_nash, Or.inr ?_⟩
-  simp only [matchingPennies]
-  exact ⟨by decide, by decide⟩
+  exact (TwoByTwoGame.hasCycling_of_fullCycling (G := matchingPennies)
+    matchingPennies_has_fullCycling)
 
 /-- Prisoner's Dilemma: 2×2 game with a unique pure Nash equilibrium (Defect, Defect).
     Utilities: 0=sucker, 1=punish, 2=reward, 3=temptation -/
