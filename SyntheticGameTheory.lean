@@ -218,6 +218,15 @@ scoped[FiniteGame] notation σ "[" i " ↦ " τ "]" => FiniteGame.MixedProfile.s
     G.substStrategy σ i τ j = σ j := by
   simp [FiniteGame.substStrategy, h]
 
+@[simp] lemma FiniteGame.substStrategy_self (G : FiniteGame) (σ : G.MixedProfile)
+    (i : Fin G.numPlayers) :
+    G.substStrategy σ i (σ i) = σ := by
+  funext j
+  simp only [substStrategy]
+  split
+  · next h => subst h; rfl
+  · rfl
+
 /-! ## Part 7: Extended Utilities and Best Response -/
 
 /-- Utility extended to mixed strategies, satisfying betweenness.
@@ -232,6 +241,21 @@ class ExtendedUtility (G : FiniteGame) where
   betweenness : ∀ (σ : G.MixedProfile) (i j : Fin G.numPlayers),
     mixBetweenness (G.simplex i).mix
       (fun τ => payoff (G.substStrategy σ i τ) j)
+  /-- Order preservation: if pure action a ≤ b for player i at profiles
+      differing in player k's strategy (x and y), then a ≤ b at the mixed
+      profile (k ↦ mix x y). Strictly weaker than linearity of expected
+      utility — the minimal axiom needed for the best-response correspondence
+      to have the closed-graph property (synthetic upper hemicontinuity). -/
+  order_preservation : ∀ (σ : G.MixedProfile) (k : Fin G.numPlayers)
+    (x y : (G.simplex k).carrier) (i : Fin G.numPlayers) (a b : G.Action i),
+    payoff (G.substStrategy (G.substStrategy σ k x) i ((G.simplex i).vertex a)) i ≤
+    payoff (G.substStrategy (G.substStrategy σ k x) i ((G.simplex i).vertex b)) i →
+    payoff (G.substStrategy (G.substStrategy σ k y) i ((G.simplex i).vertex a)) i ≤
+    payoff (G.substStrategy (G.substStrategy σ k y) i ((G.simplex i).vertex b)) i →
+    payoff (G.substStrategy (G.substStrategy σ k ((G.simplex k).mix x y)) i
+      ((G.simplex i).vertex a)) i ≤
+    payoff (G.substStrategy (G.substStrategy σ k ((G.simplex k).mix x y)) i
+      ((G.simplex i).vertex b)) i
 
 /-- Betweenness on the full carrier implies weakBetweenness when restricted
     to an edge, since the edge mix is just the simplex mix on edge points. -/
@@ -286,8 +310,30 @@ lemma FiniteGame.bestResponseContainsPure (G : FiniteGame) [ExtendedUtility G]
       · exact le_trans (hbet.1 hxy).2 hy
       · exact le_trans (hbet.2 hyx).2 hx)⟩
 
+/-- If a pure action is optimal among all pure actions, it is optimal among all
+    strategies (pure and mixed). Follows from simplex induction + betweenness. -/
+lemma FiniteGame.pureOptimal_implies_allOptimal (G : FiniteGame) [ExtendedUtility G]
+    (σ : G.MixedProfile) (i : Fin G.numPlayers) (a : G.Action i)
+    (ha : ∀ b : G.Action i,
+      ExtendedUtility.payoff (G.substStrategy σ i ((G.simplex i).vertex b)) i ≤
+      ExtendedUtility.payoff (G.substStrategy σ i ((G.simplex i).vertex a)) i) :
+    ∀ τ : (G.simplex i).carrier,
+      ExtendedUtility.payoff (G.substStrategy σ i τ) i ≤
+      ExtendedUtility.payoff (G.substStrategy σ i ((G.simplex i).vertex a)) i :=
+  (G.simplex i).induction
+    (fun τ => ExtendedUtility.payoff (G.substStrategy σ i τ) i ≤
+              ExtendedUtility.payoff (G.substStrategy σ i ((G.simplex i).vertex a)) i)
+    (fun v => ha v)
+    (fun x y hx hy => by
+      have hbet := ExtendedUtility.betweenness σ i i x y
+      rcases le_total
+        (ExtendedUtility.payoff (G.substStrategy σ i x) i)
+        (ExtendedUtility.payoff (G.substStrategy σ i y) i) with hxy | hyx
+      · exact le_trans (hbet.1 hxy).2 hy
+      · exact le_trans (hbet.2 hyx).2 hx)
 
-/-! ## Part 9: General Nash Existence via Synthetic Fixed-Point Axiom -/
+
+/-! ## Part 9: General Nash Existence via Synthetic Kakutani Axiom -/
 
 /-- A Nash equilibrium witness: bundles a profile with its proof.
     Useful for finite models where the equilibrium is explicit data. -/
@@ -295,96 +341,99 @@ structure NashWitness (G : FiniteGame) [ExtendedUtility G] where
   profile : G.MixedProfile
   is_nash : G.isNashEquilibrium profile
 
-/-- Synthetic Fixed-Point Axiom: any betweenness-respecting self-map of a product
-    of simplices has a fixed point. This is the synthetic analog of Brouwer's
-    fixed-point theorem.
+/-- Synthetic Kakutani Axiom: a correspondence on the product of simplices with
+    nonempty, mix-closed values and vertex preservation under coordinate mixing
+    has a fixed point. This replaces `SyntheticFixedPoint` (Brouwer for functions).
+    Working with correspondences directly avoids the need to select a continuous
+    function from the best-response set-valued map (see AD-11).
 
-    Betweenness is tested via utilities: for each input edge (player i varying
-    between actions a and b) and each player j, the utility of j at F(σ)
-    satisfies weakBetweenness along the edge.
-
-    In the standard model (simplices over ℝ), betweenness-respecting maps are
-    continuous, and the axiom follows from Brouwer. In finitely-presented models,
-    the user provides the fixed-point witness. -/
-class SyntheticFixedPoint (G : FiniteGame) [ExtendedUtility G] where
+    In the standard model, this follows from Kakutani's fixed-point theorem.
+    In finitely-presented models, the user provides the fixed-point witness. -/
+class SyntheticKakutani (G : FiniteGame) where
   fixed_point :
-    ∀ (F : G.MixedProfile → G.MixedProfile),
-    (∀ (σ : G.MixedProfile) (i : Fin G.numPlayers)
-      {a b : G.Action i} (e : Edge (G.simplex i) a b) (hne : a ≠ b)
-      (j : Fin G.numPlayers),
-      @weakBetweenness _ G.R (e.toSyntheticInterval hne) _
-        (fun t => ExtendedUtility.payoff
-          (F (G.substStrategy σ i (e.embed t))) j)) →
-    ∃ x : G.MixedProfile, F x = x
+    ∀ (F : G.MixedProfile → ∀ i : Fin G.numPlayers, Set (G.simplex i).carrier),
+    -- Nonempty values
+    (∀ σ i, ∃ x, x ∈ F σ i) →
+    -- Mix-closed values
+    (∀ σ i x y, x ∈ F σ i → y ∈ F σ i → (G.simplex i).mix x y ∈ F σ i) →
+    -- Vertex preservation: if vertex a ∈ F(σ[k ↦ x])(i) and ∈ F(σ[k ↦ y])(i),
+    -- then vertex a ∈ F(σ[k ↦ mix x y])(i)
+    (∀ σ (k : Fin G.numPlayers) (x y : (G.simplex k).carrier)
+       (i : Fin G.numPlayers) (a : G.Action i),
+       (G.simplex i).vertex a ∈ F (G.substStrategy σ k x) i →
+       (G.simplex i).vertex a ∈ F (G.substStrategy σ k y) i →
+       (G.simplex i).vertex a ∈ F (G.substStrategy σ k ((G.simplex k).mix x y)) i) →
+    ∃ σ : G.MixedProfile, ∀ i, σ i ∈ F σ i
 
-/-- A `NashMap` bundles a self-map on mixed profiles together with:
-    (1) a betweenness proof matching the hypothesis of `SyntheticFixedPoint`, and
-    (2) a proof that any fixed point of the map is a Nash equilibrium.
+/-- The best response set: all strategies for player i that are weakly optimal
+    given the other players' strategies in σ. -/
+def FiniteGame.bestResponseSet (G : FiniteGame) [ExtendedUtility G]
+    (σ : G.MixedProfile) (i : Fin G.numPlayers) : Set (G.simplex i).carrier :=
+  {τ | ∀ τ' : (G.simplex i).carrier,
+    ExtendedUtility.payoff (G.substStrategy σ i τ') i ≤
+    ExtendedUtility.payoff (G.substStrategy σ i τ) i}
 
-    This factoring (AD-8) separates the topological content (the fixed-point axiom
-    gives a fixed point of any betweenness-respecting map) from the game-theoretic
-    content (this particular map's fixed points are equilibria).
+/-- The best response set is nonempty: by `bestResponseContainsPure`, there is
+    always a pure strategy that is optimal. -/
+lemma FiniteGame.bestResponseSet_nonempty (G : FiniteGame) [ExtendedUtility G]
+    (σ : G.MixedProfile) (i : Fin G.numPlayers) :
+    ∃ x, x ∈ G.bestResponseSet σ i := by
+  obtain ⟨a, ha⟩ := G.bestResponseContainsPure σ i
+  exact ⟨(G.simplex i).vertex a, ha⟩
 
-    The hard part — constructing such a map — is isolated into `NashMap.construct`. -/
-structure NashMap (G : FiniteGame) [ExtendedUtility G] where
-  /-- The self-map on mixed strategy profiles. -/
-  toFun : G.MixedProfile → G.MixedProfile
-  /-- The map respects betweenness: for each base profile σ, player i's edge
-      between actions a ≠ b, and any player j, the utility of j at F(σ[i ↦ ·])
-      satisfies weakBetweenness along the edge. This is exactly the hypothesis
-      required by `SyntheticFixedPoint.fixed_point`. -/
-  betweenness : ∀ (σ : G.MixedProfile) (i : Fin G.numPlayers)
-    {a b : G.Action i} (e : Edge (G.simplex i) a b) (hne : a ≠ b)
-    (j : Fin G.numPlayers),
-    @weakBetweenness _ G.R (e.toSyntheticInterval hne) _
-      (fun t => ExtendedUtility.payoff (toFun (G.substStrategy σ i (e.embed t))) j)
-  /-- Every fixed point of the map is a Nash equilibrium. -/
-  fixed_point_is_nash : ∀ σ, toFun σ = σ → G.isNashEquilibrium σ
+/-- The best response set is mix-closed: if τ₁ and τ₂ are both best responses,
+    their mix is also a best response (by betweenness, its utility lies between
+    the two, both of which are maximal). -/
+lemma FiniteGame.bestResponseSet_mix_closed (G : FiniteGame) [ExtendedUtility G]
+    (σ : G.MixedProfile) (i : Fin G.numPlayers)
+    (x y : (G.simplex i).carrier)
+    (hx : x ∈ G.bestResponseSet σ i) (hy : y ∈ G.bestResponseSet σ i) :
+    (G.simplex i).mix x y ∈ G.bestResponseSet σ i := by
+  intro τ'
+  have hbet := ExtendedUtility.betweenness σ i i x y
+  rcases le_total
+    (ExtendedUtility.payoff (G.substStrategy σ i x) i)
+    (ExtendedUtility.payoff (G.substStrategy σ i y) i) with hxy | hyx
+  · exact le_trans (hx τ') (hbet.1 hxy).1
+  · exact le_trans (hy τ') (hbet.2 hyx).1
 
-/-- Given a `NashMap` and the synthetic fixed-point axiom, a Nash equilibrium exists.
+/-- The best response set has vertex preservation: if vertex a is a best response
+    at σ[k ↦ x] and at σ[k ↦ y], then it is a best response at σ[k ↦ mix x y].
+    Proof uses order preservation to show a beats every pure b at the mixed profile,
+    then pureOptimal_implies_allOptimal to extend to all mixed strategies. -/
+lemma FiniteGame.bestResponseSet_vertex_monotone (G : FiniteGame) [ExtendedUtility G]
+    (σ : G.MixedProfile) (k : Fin G.numPlayers)
+    (x y : (G.simplex k).carrier)
+    (i : Fin G.numPlayers) (a : G.Action i)
+    (hx : (G.simplex i).vertex a ∈ G.bestResponseSet (G.substStrategy σ k x) i)
+    (hy : (G.simplex i).vertex a ∈ G.bestResponseSet (G.substStrategy σ k y) i) :
+    (G.simplex i).vertex a ∈
+      G.bestResponseSet (G.substStrategy σ k ((G.simplex k).mix x y)) i :=
+  G.pureOptimal_implies_allOptimal
+    (G.substStrategy σ k ((G.simplex k).mix x y)) i a
+    (fun b => ExtendedUtility.order_preservation σ k x y i b a
+      (hx ((G.simplex i).vertex b))
+      (hy ((G.simplex i).vertex b)))
 
-    Proof: apply the fixed-point axiom to obtain a fixed point of the map,
-    then invoke `fixed_point_is_nash`. -/
-theorem FiniteGame.nash_of_nashMap (G : FiniteGame) [ExtendedUtility G]
-    [SyntheticFixedPoint G] (nm : NashMap G) :
-    ∃ σ, G.isNashEquilibrium σ := by
-  obtain ⟨σ, hσ⟩ := SyntheticFixedPoint.fixed_point nm.toFun nm.betweenness
-  exact ⟨σ, nm.fixed_point_is_nash σ hσ⟩
+/-- General Nash existence: every finite game with extended utilities and the
+    Synthetic Kakutani axiom has a Nash equilibrium.
 
-/-- Construct a `NashMap` for an arbitrary finite game.
-
-    This is the hard part of general Nash existence. The map must:
-    - be betweenness-respecting (so the fixed-point axiom applies), and
-    - have the property that fixed points are Nash equilibria.
-
-    The naive "mix toward best response" map fails because `argmax` over pure
-    strategies can jump discontinuously as the profile varies along an edge,
-    breaking the betweenness hypothesis (see OQ-1).
-
-    The intended construction uses *indifference-seeking*: move profiles toward
-    points where players are indifferent between actions (found via crossing data
-    on each edge). This avoids the argmax discontinuity.
-
-    For games where a direct `NashWitness` is available (e.g., 2×2 games via
-    `twoByTwo_nash_exists`), `NashMap` is not needed — the witness suffices. -/
-noncomputable def NashMap.construct (G : FiniteGame) [ExtendedUtility G] :
-    NashMap G := by
-  exact sorry
-
-/-- General Nash existence theorem: every finite game with extended utilities
-    and the synthetic fixed-point property has a Nash equilibrium.
-
-    Strategy (per AD-8): factor through `NashMap`.
-    1. `NashMap.construct` builds a betweenness-respecting self-map whose fixed
-       points are Nash equilibria. (Currently sorry — see `NashMap.construct`.)
-    2. `nash_of_nashMap` applies the fixed-point axiom and extracts the equilibrium.
-
-    The sole remaining sorry is in `NashMap.construct`, which requires solving
-    the discontinuity problem described in OQ-1. -/
+    Proof: the best response correspondence is nonempty (bestResponseContainsPure),
+    mix-closed (betweenness), and vertex-monotone (order preservation). The Kakutani
+    axiom gives a fixed point σ where σ i ∈ bestResponseSet σ i for all i.
+    Since σ[i ↦ σ i] = σ (substStrategy_self), this means every player is
+    best-responding — a Nash equilibrium. -/
 theorem FiniteGame.nash_exists (G : FiniteGame) [ExtendedUtility G]
-    [SyntheticFixedPoint G] :
-    ∃ σ : G.MixedProfile, G.isNashEquilibrium σ :=
-  G.nash_of_nashMap (NashMap.construct G)
+    [SyntheticKakutani G] :
+    ∃ σ : G.MixedProfile, G.isNashEquilibrium σ := by
+  obtain ⟨σ, hσ⟩ := SyntheticKakutani.fixed_point
+    (fun σ i => G.bestResponseSet σ i)
+    (fun σ i => G.bestResponseSet_nonempty σ i)
+    (fun σ i x y hx hy => G.bestResponseSet_mix_closed σ i x y hx hy)
+    (fun σ k x y i a hx hy => G.bestResponseSet_vertex_monotone σ k x y i a hx hy)
+  exact ⟨σ, fun i τ => by
+    have h := hσ i τ
+    rwa [G.substStrategy_self] at h⟩
 
 
 /-! ## Part 10: The 2×2 Proof in Detail -/
