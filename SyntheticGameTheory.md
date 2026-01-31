@@ -131,13 +131,13 @@ For games with more actions or players, the argument requires a multi-dimensiona
 
 This is the synthetic analog of Brouwer's fixed-point theorem. No cardinal arithmetic is needed — the axiom captures the topological content directly.
 
-The proof of general Nash existence:
-1. Construct a "best-response map" F: for each player, F maps the current profile to a profile where that player plays a best response
-2. Show F satisfies the betweenness condition (from the extended utility betweenness)
-3. Apply the Synthetic Fixed-Point Axiom to obtain a fixed point
-4. A fixed point of the best-response map is a Nash equilibrium
+The proof of general Nash existence uses **crossing-based selection** rather than best-response maximization:
+1. For each player, define a self-map that moves the current profile toward indifference — the point where the player values all their actions equally. This uses crossing points on edges of the opponent simplices, generalizing the 2×2 indifference argument.
+2. Show this map satisfies the betweenness condition (from the extended utility betweenness).
+3. Apply the Synthetic Fixed-Point Axiom to obtain a fixed point.
+4. A fixed point of the indifference-seeking map is a Nash equilibrium: each player either is indifferent (so any response is best) or has a dominant action.
 
-The best-response map uses `mix` to move toward the best pure response, and strict betweenness ensures that fixed points are exactly the profiles where no player can improve.
+An earlier design used a "mix toward best pure response" map, but this has a fundamental discontinuity: the argmax over pure strategies can jump as the profile varies, breaking the betweenness condition. The crossing-selection approach avoids this by constructing the map via the crossing axiom, which inherently produces betweenness-respecting selections.
 
 ## Modular Axiom Architecture
 
