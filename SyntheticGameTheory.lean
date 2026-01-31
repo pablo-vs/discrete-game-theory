@@ -317,27 +317,74 @@ class SyntheticFixedPoint (G : FiniteGame) [ExtendedUtility G] where
           (F (G.substStrategy σ i (e.embed t))) j)) →
     ∃ x : G.MixedProfile, F x = x
 
+/-- A `NashMap` bundles a self-map on mixed profiles together with:
+    (1) a betweenness proof matching the hypothesis of `SyntheticFixedPoint`, and
+    (2) a proof that any fixed point of the map is a Nash equilibrium.
+
+    This factoring (AD-8) separates the topological content (the fixed-point axiom
+    gives a fixed point of any betweenness-respecting map) from the game-theoretic
+    content (this particular map's fixed points are equilibria).
+
+    The hard part — constructing such a map — is isolated into `NashMap.construct`. -/
+structure NashMap (G : FiniteGame) [ExtendedUtility G] where
+  /-- The self-map on mixed strategy profiles. -/
+  toFun : G.MixedProfile → G.MixedProfile
+  /-- The map respects betweenness: for each base profile σ, player i's edge
+      between actions a ≠ b, and any player j, the utility of j at F(σ[i ↦ ·])
+      satisfies weakBetweenness along the edge. This is exactly the hypothesis
+      required by `SyntheticFixedPoint.fixed_point`. -/
+  betweenness : ∀ (σ : G.MixedProfile) (i : Fin G.numPlayers)
+    {a b : G.Action i} (e : Edge (G.simplex i) a b) (hne : a ≠ b)
+    (j : Fin G.numPlayers),
+    @weakBetweenness _ G.R (e.toSyntheticInterval hne) _
+      (fun t => ExtendedUtility.payoff (toFun (G.substStrategy σ i (e.embed t))) j)
+  /-- Every fixed point of the map is a Nash equilibrium. -/
+  fixed_point_is_nash : ∀ σ, toFun σ = σ → G.isNashEquilibrium σ
+
+/-- Given a `NashMap` and the synthetic fixed-point axiom, a Nash equilibrium exists.
+
+    Proof: apply the fixed-point axiom to obtain a fixed point of the map,
+    then invoke `fixed_point_is_nash`. -/
+theorem FiniteGame.nash_of_nashMap (G : FiniteGame) [ExtendedUtility G]
+    [SyntheticFixedPoint G] (nm : NashMap G) :
+    ∃ σ, G.isNashEquilibrium σ := by
+  obtain ⟨σ, hσ⟩ := SyntheticFixedPoint.fixed_point nm.toFun nm.betweenness
+  exact ⟨σ, nm.fixed_point_is_nash σ hσ⟩
+
+/-- Construct a `NashMap` for an arbitrary finite game.
+
+    This is the hard part of general Nash existence. The map must:
+    - be betweenness-respecting (so the fixed-point axiom applies), and
+    - have the property that fixed points are Nash equilibria.
+
+    The naive "mix toward best response" map fails because `argmax` over pure
+    strategies can jump discontinuously as the profile varies along an edge,
+    breaking the betweenness hypothesis (see OQ-1).
+
+    The intended construction uses *indifference-seeking*: move profiles toward
+    points where players are indifferent between actions (found via crossing data
+    on each edge). This avoids the argmax discontinuity.
+
+    For games where a direct `NashWitness` is available (e.g., 2×2 games via
+    `twoByTwo_nash_exists`), `NashMap` is not needed — the witness suffices. -/
+noncomputable def NashMap.construct (G : FiniteGame) [ExtendedUtility G] :
+    NashMap G := by
+  exact sorry
+
 /-- General Nash existence theorem: every finite game with extended utilities
     and the synthetic fixed-point property has a Nash equilibrium.
 
-    Strategy: construct the "mix toward best response" map, show it satisfies
-    the betweenness hypothesis, apply the fixed-point axiom, then show that
-    fixed points are Nash equilibria. -/
+    Strategy (per AD-8): factor through `NashMap`.
+    1. `NashMap.construct` builds a betweenness-respecting self-map whose fixed
+       points are Nash equilibria. (Currently sorry — see `NashMap.construct`.)
+    2. `nash_of_nashMap` applies the fixed-point axiom and extracts the equilibrium.
+
+    The sole remaining sorry is in `NashMap.construct`, which requires solving
+    the discontinuity problem described in OQ-1. -/
 theorem FiniteGame.nash_exists (G : FiniteGame) [ExtendedUtility G]
     [SyntheticFixedPoint G] :
-    ∃ σ : G.MixedProfile, G.isNashEquilibrium σ := by
-  -- The best-response map: for each player, mix current strategy with best pure response
-  -- Step 1: For each player and profile, get the best pure response
-  have hbest : ∀ σ i, ∃ a : G.Action i, ∀ τ,
-      ExtendedUtility.payoff (G.substStrategy σ i τ) i ≤
-      ExtendedUtility.payoff (G.substStrategy σ i ((G.simplex i).vertex a)) i :=
-    fun σ i => G.bestResponseContainsPure σ i
-  -- Step 2: Construct the map F(σ)_i = mix(σ_i, vertex(bestPure_i(σ)))
-  -- Step 3: Show betweenness of F (the hard part — the best pure response may
-  --         change discontinuously as the profile varies along an edge)
-  -- Step 4: Apply SyntheticFixedPoint.fixed_point
-  -- Step 5: Show fixed points are Nash equilibria
-  sorry
+    ∃ σ : G.MixedProfile, G.isNashEquilibrium σ :=
+  G.nash_of_nashMap (NashMap.construct G)
 
 
 /-! ## Part 10: The 2×2 Proof in Detail -/
