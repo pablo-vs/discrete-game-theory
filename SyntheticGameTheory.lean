@@ -97,24 +97,40 @@ class CrossingAxiom (I : Type u) (R : Type v) [SyntheticInterval I] [LE R] where
 
 /-! ## Part 5: Synthetic Simplices -/
 
-/-- A synthetic simplex over a finite set of vertices.
-    This is the abstract mixed strategy space. -/
-structure SyntheticSimplex (V : Type u) [Fintype V] where
+/-- A synthetic simplex over a set of vertices.
+    This is the abstract mixed strategy space. The `convex_max` axiom asserts
+    that for any total betweenness-respecting preorder on the carrier, some
+    vertex is maximal — the synthetic Bauer maximum principle. -/
+structure SyntheticSimplex (V : Type u) where
   carrier : Type u
   vertex : V → carrier
   mix : carrier → carrier → carrier
   vertex_injective : Function.Injective vertex
   mix_idem : ∀ x, mix x x = x
   mix_comm : ∀ x y, mix x y = mix y x
-  /-- The carrier is inductively generated from vertices and mix.
-      This is the recursor for the free algebra over vertex and mix. -/
-  induction : ∀ (P : carrier → Prop),
-    (∀ v : V, P (vertex v)) →
-    (∀ x y, P x → P y → P (mix x y)) →
-    ∀ x, P x
+  /-- Synthetic Bauer maximum principle: for any total preorder on the carrier
+      that respects mix-betweenness, some vertex is maximal. Formulated at the
+      Prop level (no external type parameter) to avoid universe issues.
+      The function-into-R version is derived as `convex_max_fn`. -/
+  convex_max : ∀ (r : carrier → carrier → Prop),
+    (∀ x y, r x y ∨ r y x) →
+    (∀ x y z, r x y → r y z → r x z) →
+    (∀ x y, (r x y → r x (mix x y) ∧ r (mix x y) y) ∧
+            (r y x → r y (mix x y) ∧ r (mix x y) x)) →
+    ∃ a : V, ∀ x : carrier, r x (vertex a)
+
+/-- Derived form of `convex_max`: every betweenness-respecting function into a
+    linear order achieves its maximum at a vertex. -/
+lemma SyntheticSimplex.convex_max_fn {V : Type u} (Δ : SyntheticSimplex V)
+    {R : Type*} [LinearOrder R] (f : Δ.carrier → R)
+    (hf : mixBetweenness Δ.mix f) : ∃ a : V, ∀ x : Δ.carrier, f x ≤ f (Δ.vertex a) :=
+  Δ.convex_max (fun x y => f x ≤ f y)
+    (fun x y => le_total (f x) (f y))
+    (fun _ _ _ hab hbc => le_trans hab hbc)
+    (fun x y => hf x y)
 
 /-- The edge between two vertices forms a synthetic interval -/
-structure Edge {V : Type u} [Fintype V] (Δ : SyntheticSimplex V) (v w : V) where
+structure Edge {V : Type u} (Δ : SyntheticSimplex V) (v w : V) where
   points : Set Δ.carrier
   has_v : Δ.vertex v ∈ points
   has_w : Δ.vertex w ∈ points
@@ -138,11 +154,11 @@ structure Edge {V : Type u} [Fintype V] (Δ : SyntheticSimplex V) (v w : V) wher
     le x y → ¬le y x → ¬le y (Δ.mix x y)
 
 /-- Embedding an edge point into the carrier -/
-def Edge.embed {V : Type u} [Fintype V] {Δ : SyntheticSimplex V} {v w : V}
+def Edge.embed {V : Type u} {Δ : SyntheticSimplex V} {v w : V}
     (e : Edge Δ v w) (t : Subtype e.points) : Δ.carrier := t.val
 
 /-- An edge can be viewed as a synthetic interval -/
-def Edge.toSyntheticInterval {V : Type u} [Fintype V] {Δ : SyntheticSimplex V} {v w : V}
+def Edge.toSyntheticInterval {V : Type u} {Δ : SyntheticSimplex V} {v w : V}
     (e : Edge Δ v w) (hne : v ≠ w) : SyntheticInterval (Subtype e.points) where
   le := fun x y => e.le x.val y.val
   lt := fun x y => e.le x.val y.val ∧ ¬e.le y.val x.val
@@ -282,36 +298,20 @@ def FiniteGame.isNashEquilibrium (G : FiniteGame) [ExtendedUtility G]
   ∀ i, G.isBestResponse σ i
 
 /-- Key lemma: Best responses always include a pure strategy.
-    By betweenness, the utility of any mixed strategy lies between the utilities
-    of the pure strategies it mixes. Therefore the maximum utility among pure
-    strategies is at least as large as any mixed strategy's utility. -/
+    By `convex_max`, the utility function (which satisfies betweenness) achieves
+    its maximum at some vertex = pure strategy. -/
 lemma FiniteGame.bestResponseContainsPure (G : FiniteGame) [ExtendedUtility G]
     (σ : G.MixedProfile) (i : Fin G.numPlayers) :
     ∃ a : G.Action i, ∀ τ : (G.simplex i).carrier,
       ExtendedUtility.payoff (G.substStrategy σ i τ) i ≤
-      ExtendedUtility.payoff (G.substStrategy σ i ((G.simplex i).vertex a)) i := by
-  -- Abbreviate the utility function
-  set f := fun τ => ExtendedUtility.payoff (G.substStrategy σ i τ) i with hf_def
-  -- Find the best pure strategy (argmax over the finite nonempty action set)
-  have hmax : ∃ a : G.Action i, ∀ b : G.Action i,
-      f ((G.simplex i).vertex b) ≤ f ((G.simplex i).vertex a) := by
-    haveI : Finite (G.Action i) := Finite.of_fintype (G.Action i)
-    exact Finite.exists_max (fun a => f ((G.simplex i).vertex a))
-  obtain ⟨a, ha⟩ := hmax
-  exact ⟨a, (G.simplex i).induction
-    (fun τ => f τ ≤ f ((G.simplex i).vertex a))
-    (fun v => ha v)
-    (fun x y hx hy => by
-      -- By mixBetweenness, f(mix x y) is between f(x) and f(y)
-      have hbet := ExtendedUtility.betweenness σ i i x y
-      -- Both f(x) ≤ f(vertex a) and f(y) ≤ f(vertex a)
-      -- Case split: which of f(x), f(y) is larger?
-      rcases le_total (f x) (f y) with hxy | hyx
-      · exact le_trans (hbet.1 hxy).2 hy
-      · exact le_trans (hbet.2 hyx).2 hx)⟩
+      ExtendedUtility.payoff (G.substStrategy σ i ((G.simplex i).vertex a)) i :=
+  (G.simplex i).convex_max_fn
+    (fun τ => ExtendedUtility.payoff (G.substStrategy σ i τ) i)
+    (ExtendedUtility.betweenness σ i i)
 
 /-- If a pure action is optimal among all pure actions, it is optimal among all
-    strategies (pure and mixed). Follows from simplex induction + betweenness. -/
+    strategies (pure and mixed). Follows from `convex_max`: the maximum over
+    all strategies is at some vertex b, and a beats b by hypothesis. -/
 lemma FiniteGame.pureOptimal_implies_allOptimal (G : FiniteGame) [ExtendedUtility G]
     (σ : G.MixedProfile) (i : Fin G.numPlayers) (a : G.Action i)
     (ha : ∀ b : G.Action i,
@@ -319,18 +319,12 @@ lemma FiniteGame.pureOptimal_implies_allOptimal (G : FiniteGame) [ExtendedUtilit
       ExtendedUtility.payoff (G.substStrategy σ i ((G.simplex i).vertex a)) i) :
     ∀ τ : (G.simplex i).carrier,
       ExtendedUtility.payoff (G.substStrategy σ i τ) i ≤
-      ExtendedUtility.payoff (G.substStrategy σ i ((G.simplex i).vertex a)) i :=
-  (G.simplex i).induction
-    (fun τ => ExtendedUtility.payoff (G.substStrategy σ i τ) i ≤
-              ExtendedUtility.payoff (G.substStrategy σ i ((G.simplex i).vertex a)) i)
-    (fun v => ha v)
-    (fun x y hx hy => by
-      have hbet := ExtendedUtility.betweenness σ i i x y
-      rcases le_total
-        (ExtendedUtility.payoff (G.substStrategy σ i x) i)
-        (ExtendedUtility.payoff (G.substStrategy σ i y) i) with hxy | hyx
-      · exact le_trans (hbet.1 hxy).2 hy
-      · exact le_trans (hbet.2 hyx).2 hx)
+      ExtendedUtility.payoff (G.substStrategy σ i ((G.simplex i).vertex a)) i := by
+  obtain ⟨b, hb⟩ := (G.simplex i).convex_max_fn
+    (fun τ => ExtendedUtility.payoff (G.substStrategy σ i τ) i)
+    (ExtendedUtility.betweenness σ i i)
+  intro τ
+  exact le_trans (hb τ) (ha b)
 
 
 /-! ## Part 9: General Nash Existence via Synthetic Kakutani Axiom -/
