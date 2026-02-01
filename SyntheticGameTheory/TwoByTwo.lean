@@ -1,17 +1,155 @@
 /-
   2×2 Games, Crossing-Based Nash Proof, and Example Games
 
-  This file contains the specialized 2×2 game theory machinery that is
-  independent of the general Nash existence theorem. It demonstrates axiom
-  economy (no Kakutani or order preservation needed — only Crossing Axiom)
-  but is not on the critical path for the general framework.
-
-  Moved from SyntheticGameTheory.lean to reduce main file size.
+  This file contains:
+  - The Synthetic Interval, weakBetweenness, Crossing Axiom, and Edge infrastructure
+    (used only by the 2×2 crossing-based proof, not the general Nash theorem)
+  - The specialized 2×2 game theory machinery demonstrating axiom economy
+    (no Kakutani or order preservation needed — only Crossing Axiom)
+  - Example games (Matching Pennies, Prisoner's Dilemma, Battle of the Sexes)
 -/
 
 import SyntheticGameTheory
+import Mathlib.Order.Fin.Basic
 
 universe u v
+
+/-! ## Synthetic Interval
+
+A synthetic interval abstracts [0,1] without numerical structure. It has endpoints
+and a mixing operation with order. This is used by the Crossing Axiom and Edge
+infrastructure for the 2×2 proof; the general Nash theorem does not need it. -/
+
+/-- A synthetic interval abstracts [0,1] without numerical structure.
+    It has endpoints and a mixing operation, with order only on the interval itself. -/
+class SyntheticInterval (I : Type u) extends PartialOrder I where
+  zero : I
+  one : I
+  mix : I → I → I
+  le_total : ∀ x y : I, x ≤ y ∨ y ≤ x
+  zero_le : ∀ x : I, zero ≤ x
+  le_one : ∀ x : I, x ≤ one
+  zero_ne_one : zero ≠ one
+  mix_idem : ∀ x : I, mix x x = x
+  mix_comm : ∀ x y : I, mix x y = mix y x
+  mix_between_left : ∀ x y : I, x ≤ y → x ≤ mix x y
+  mix_between_right : ∀ x y : I, x ≤ y → mix x y ≤ y
+  mix_strict_left : ∀ x y : I, x < y → x < mix x y
+  mix_strict_right : ∀ x y : I, x < y → mix x y < y
+
+namespace SyntheticInterval
+
+variable {I : Type u} [SyntheticInterval I]
+
+/-- The mix of distinct points lies strictly between them -/
+lemma mix_strict_between {x y : I} (hxy : x < y) :
+    x < mix x y ∧ mix x y < y :=
+  ⟨mix_strict_left x y hxy, mix_strict_right x y hxy⟩
+
+end SyntheticInterval
+
+
+/-! ## Weak Betweenness
+
+A function satisfies weak betweenness if images of mixtures lie between images
+of endpoints. This is the interval-based variant; the general theory uses
+`mixBetweenness` instead (no domain order needed). -/
+
+/-- A function satisfies weak betweenness if images of mixtures lie between images of endpoints -/
+def weakBetweenness {I : Type u} {R : Type v} [SyntheticInterval I] [LE R]
+    (f : I → R) : Prop :=
+  ∀ x y : I,
+    (f x ≤ f y → f x ≤ f (SyntheticInterval.mix x y) ∧ f (SyntheticInterval.mix x y) ≤ f y) ∧
+    (f y ≤ f x → f y ≤ f (SyntheticInterval.mix x y) ∧ f (SyntheticInterval.mix x y) ≤ f x)
+
+
+/-! ## The Crossing Axiom -/
+
+/-- Two functions cross on the interval if they swap order between endpoints -/
+def Crosses {I : Type u} {R : Type v} [SyntheticInterval I] [LE R]
+    (f g : I → R) : Prop :=
+  (f SyntheticInterval.zero ≤ g SyntheticInterval.zero ∧
+   g SyntheticInterval.one ≤ f SyntheticInterval.one) ∨
+  (g SyntheticInterval.zero ≤ f SyntheticInterval.zero ∧
+   f SyntheticInterval.one ≤ g SyntheticInterval.one)
+
+/-- The Crossing Axiom: if two betweenness-respecting functions cross,
+    they have a common value somewhere on the interval -/
+class CrossingAxiom (I : Type u) (R : Type v) [SyntheticInterval I] [LE R] where
+  crossing_point : ∀ (f g : I → R),
+    weakBetweenness f → weakBetweenness g → Crosses f g →
+    ∃ p : I, f p = g p
+
+
+/-! ## Edges -/
+
+/-- The edge between two vertices forms a synthetic interval -/
+structure Edge {V : Type u} (Δ : SyntheticSimplex V) (v w : V) where
+  points : Set Δ.carrier
+  has_v : Δ.vertex v ∈ points
+  has_w : Δ.vertex w ∈ points
+  mix_closed : ∀ x y, x ∈ points → y ∈ points → Δ.mix x y ∈ points
+  le : Δ.carrier → Δ.carrier → Prop
+  le_total : ∀ x y, x ∈ points → y ∈ points → le x y ∨ le y x
+  le_refl : ∀ x, x ∈ points → le x x
+  le_antisymm : ∀ x y, x ∈ points → y ∈ points → le x y → le y x → x = y
+  le_trans : ∀ x y z, x ∈ points → y ∈ points → z ∈ points →
+    le x y → le y z → le x z
+  v_le_w : le (Δ.vertex v) (Δ.vertex w)
+  le_v : ∀ x, x ∈ points → le (Δ.vertex v) x
+  le_w : ∀ x, x ∈ points → le x (Δ.vertex w)
+  mix_between_left : ∀ x y, x ∈ points → y ∈ points →
+    le x y → le x (Δ.mix x y)
+  mix_between_right : ∀ x y, x ∈ points → y ∈ points →
+    le x y → le (Δ.mix x y) y
+  mix_ne_left : ∀ x y, x ∈ points → y ∈ points →
+    le x y → ¬le y x → ¬le (Δ.mix x y) x
+  mix_ne_right : ∀ x y, x ∈ points → y ∈ points →
+    le x y → ¬le y x → ¬le y (Δ.mix x y)
+
+/-- Embedding an edge point into the carrier -/
+def Edge.embed {V : Type u} {Δ : SyntheticSimplex V} {v w : V}
+    (e : Edge Δ v w) (t : Subtype e.points) : Δ.carrier := t.val
+
+/-- An edge can be viewed as a synthetic interval -/
+def Edge.toSyntheticInterval {V : Type u} {Δ : SyntheticSimplex V} {v w : V}
+    (e : Edge Δ v w) (hne : v ≠ w) : SyntheticInterval (Subtype e.points) where
+  le := fun x y => e.le x.val y.val
+  lt := fun x y => e.le x.val y.val ∧ ¬e.le y.val x.val
+  le_refl := fun x => e.le_refl x.val x.prop
+  le_trans := fun {a b c} hab hbc => e.le_trans a.val b.val c.val a.prop b.prop c.prop hab hbc
+  lt_iff_le_not_ge := fun _ _ => Iff.rfl
+  le_antisymm := fun {a b} hab hba =>
+    Subtype.ext (e.le_antisymm a.val b.val a.prop b.prop hab hba)
+  zero := ⟨Δ.vertex v, e.has_v⟩
+  one := ⟨Δ.vertex w, e.has_w⟩
+  mix := fun x y => ⟨Δ.mix x.val y.val, e.mix_closed x.val y.val x.prop y.prop⟩
+  le_total := fun x y => e.le_total x.val y.val x.prop y.prop
+  zero_le := fun x => e.le_v x.val x.prop
+  le_one := fun x => e.le_w x.val x.prop
+  zero_ne_one := fun h => hne (Δ.vertex_injective (Subtype.mk.inj h))
+  mix_idem := fun x => Subtype.ext (Δ.mix_idem x.val)
+  mix_comm := fun x y => Subtype.ext (Δ.mix_comm x.val y.val)
+  mix_between_left := fun x y hxy => e.mix_between_left x.val y.val x.prop y.prop hxy
+  mix_between_right := fun x y hxy => e.mix_between_right x.val y.val x.prop y.prop hxy
+  mix_strict_left := fun x y hxy =>
+    ⟨e.mix_between_left x.val y.val x.prop y.prop hxy.1,
+     e.mix_ne_left x.val y.val x.prop y.prop hxy.1 hxy.2⟩
+  mix_strict_right := fun x y hxy =>
+    ⟨e.mix_between_right x.val y.val x.prop y.prop hxy.1,
+     e.mix_ne_right x.val y.val x.prop y.prop hxy.1 hxy.2⟩
+
+open scoped Game
+
+/-- Betweenness on the full carrier implies weakBetweenness when restricted
+    to an edge, since the edge mix is just the simplex mix on edge points. -/
+lemma ExtendedUtility.edge_betweenness (G : Game) [ExtendedUtility G]
+    (σ : G.MixedProfile) (i j : Fin G.numPlayers)
+    {a b : G.Action i} (e : Edge (G.simplex i) a b) (hne : a ≠ b) :
+    @weakBetweenness _ G.R (e.toSyntheticInterval hne) _
+      (fun t => ExtendedUtility.payoff (σ[i ↦ e.embed t]) j) :=
+  fun x y => ExtendedUtility.betweenness σ i j x.val y.val
+
 
 /-! ## 2×2 Games -/
 
@@ -31,22 +169,6 @@ structure TwoByTwoGame where
   u2_BR : R
 
 attribute [instance] TwoByTwoGame.instR
-
-/-- Player 1's strategies -/
-inductive P1Strategy | Top | Bottom
-  deriving DecidableEq
-
-instance : Fintype P1Strategy where
-  elems := {P1Strategy.Top, P1Strategy.Bottom}
-  complete := fun x => by cases x <;> simp
-
-/-- Player 2's strategies -/
-inductive P2Strategy | Left | Right
-  deriving DecidableEq
-
-instance : Fintype P2Strategy where
-  elems := {P2Strategy.Left, P2Strategy.Right}
-  complete := fun x => by cases x <;> simp
 
 /-- A pure Nash exists if some cell is a mutual best response -/
 def TwoByTwoGame.hasPureNash (G : TwoByTwoGame) : Prop :=
@@ -254,18 +376,12 @@ theorem battleOfSexes_has_pure_nash : battleOfSexes.hasPureNash := by
 inductive TwoAction | A | B
   deriving DecidableEq
 
-instance : Fintype TwoAction where
-  elems := {TwoAction.A, TwoAction.B}
-  complete := fun x => by cases x <;> simp
-
-/-- Convert a TwoByTwoGame into a FiniteGame using a common action type.
+/-- Convert a TwoByTwoGame into a Game using a common action type.
     Player 0: A=Top, B=Bottom. Player 1: A=Left, B=Right. -/
-noncomputable def TwoByTwoGame.toFiniteGame (G : TwoByTwoGame)
-    (Δ : ∀ (_ : Fin 2), SyntheticSimplex TwoAction) : FiniteGame where
+noncomputable def TwoByTwoGame.toGame (G : TwoByTwoGame)
+    (Δ : ∀ (_ : Fin 2), SyntheticSimplex TwoAction) : Game where
   numPlayers := 2
   Action := fun _ => TwoAction
-  actionFintype := fun _ => inferInstance
-  actionNonempty := fun _ => ⟨TwoAction.A⟩
   R := G.R
   instLinearOrder := G.instR
   simplex := Δ
