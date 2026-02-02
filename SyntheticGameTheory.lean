@@ -1,10 +1,3 @@
-/-
-  Synthetic Game Theory — Discrete Simplex Model
-
-  Payoffs in {lo < mid < hi}. Mixed strategies are faces of discrete
-  simplices (nonempty subsets of vertices). Extended utility via the
-  filling rule: agree on pure profiles → that value, disagree → mid.
--/
 import Mathlib.Data.Fintype.Powerset
 import Mathlib.Data.Fintype.Pi
 import Mathlib.Order.Basic
@@ -13,63 +6,7 @@ import Mathlib.Tactic
 namespace SyntheticGameTheory
 
 -- ================================================================
--- Part 1: Outcome — three-valued payoff space {lo < mid < hi}
--- ================================================================
-
-inductive Outcome : Type
-  | lo | mid | hi
-  deriving DecidableEq, Repr
-
-namespace Outcome
-
-/-- Boolean comparison for computable order. -/
-def ble : Outcome → Outcome → Bool
-  | lo, _ => true
-  | mid, lo => false
-  | mid, _ => true
-  | hi, hi => true
-  | hi, _ => false
-
-instance : LE Outcome := ⟨fun a b => a.ble b = true⟩
-instance : LT Outcome := ⟨fun a b => a ≤ b ∧ ¬b ≤ a⟩
-
-instance instDecLE (a b : Outcome) : Decidable (a ≤ b) :=
-  inferInstanceAs (Decidable (a.ble b = true))
-
-instance instDecLT (a b : Outcome) : Decidable (a < b) :=
-  inferInstanceAs (Decidable (a ≤ b ∧ ¬b ≤ a))
-
-instance : Min Outcome := minOfLe
-instance : Max Outcome := maxOfLe
-
-instance : LinearOrder Outcome where
-  le_refl a := by cases a <;> decide
-  le_trans a b c := by cases a <;> cases b <;> cases c <;> simp [LE.le, ble]
-  le_antisymm a b := by cases a <;> cases b <;> simp [LE.le, ble]
-  le_total a b := by cases a <;> cases b <;> simp [LE.le, ble]
-  toDecidableLE := instDecLE
-  toDecidableEq := inferInstance
-  toDecidableLT := instDecLT
-  min_def a b := by cases a <;> cases b <;> decide
-  max_def a b := by cases a <;> cases b <;> decide
-
-instance : Fintype Outcome where
-  elems := {lo, mid, hi}
-  complete := by rintro ⟨⟩ <;> simp
-
-instance : BoundedOrder Outcome where
-  top := hi
-  le_top := by rintro ⟨⟩ <;> decide
-  bot := lo
-  bot_le := by rintro ⟨⟩ <;> decide
-
-@[simp] theorem lo_le (x : Outcome) : lo ≤ x := bot_le
-@[simp] theorem le_hi (x : Outcome) : x ≤ hi := le_top
-
-end Outcome
-
--- ================================================================
--- Part 2: DSimplex — discrete simplex (face lattice)
+-- Part 1: Discrete simplex
 -- ================================================================
 
 /-- A discrete simplex on vertex set V. Elements are nonempty subsets
@@ -144,8 +81,9 @@ theorem mix_isSubface_right (x y : DSimplex V) : IsSubface y (mix x y) := by
 end DSimplex
 
 -- ================================================================
--- Part 3: Games, Extended Utility, and Nash Equilibrium
+-- Part 2: Games, Payoffs
 -- ================================================================
+
 
 /-- A pure profile: each player picks a vertex (pure action). -/
 abbrev PureProfile (N : Type*) (V : N → Type*) := ∀ i : N, V i
@@ -162,135 +100,11 @@ notation:max σ:max "[" i " ↦ " s "]" => Function.update σ i s
     Only pure-profile payoffs are stored; extended utility is derived. -/
 structure Game (N : Type*) [DecidableEq N] [Fintype N]
     (V : N → Type*) [∀ i, DecidableEq (V i)] [∀ i, Fintype (V i)] where
-  payoff : N → PureProfile N V → Outcome
+    -- TODO: payoff: one preorder on pure profiles for each player such that holding p{-i} fixed, pure deviations of player i are totally ordered.
 
 namespace Game
 
 variable {N : Type*} [DecidableEq N] [Fintype N]
 variable {V : N → Type*} [∀ i, DecidableEq (V i)] [∀ i, Fintype (V i)]
 
-/-- Extended utility via the filling rule.
-    If all consistent pure profiles give the same value, return it;
-    otherwise return mid. A pure profile p is "consistent" with
-    profile σ when p j ∈ (σ j).val for all players j. -/
-def utility (G : Game N V) (i : N) (σ : Profile N V) : Outcome :=
-  let consistent := Finset.univ.filter (fun p : PureProfile N V =>
-    ∀ j : N, p j ∈ (σ j).1)
-  if ∀ p ∈ consistent, G.payoff i p = Outcome.hi then Outcome.hi
-  else if ∀ p ∈ consistent, G.payoff i p = Outcome.lo then Outcome.lo
-  else Outcome.mid
-
-/-- Nash equilibrium: no player can improve by deviating. -/
-def isNashEquilibrium (G : Game N V) (σ : Profile N V) : Prop :=
-  ∀ i : N, ∀ s' : DSimplex (V i),
-    G.utility i σ ≥ G.utility i σ[i ↦ s']
-
-instance instDecNash (G : Game N V) (σ : Profile N V) :
-    Decidable (isNashEquilibrium G σ) :=
-  Fintype.decidableForallFintype (p := fun i =>
-    ∀ s' : DSimplex (V i),
-      G.utility i σ ≥ G.utility i σ[i ↦ s'])
-
-/-- Fintype instance for Game (needed for universal quantification). -/
-instance instFintypeGame : Fintype (Game N V) :=
-  Fintype.ofEquiv _ {
-    toFun := Game.mk (N := N) (V := V)
-    invFun := Game.payoff
-    left_inv := fun _ => rfl
-    right_inv := fun ⟨_⟩ => rfl }
-
--- Utility at a pure profile equals the raw payoff.
-theorem utility_pure (G : Game N V) (i : N) (p : PureProfile N V) :
-    G.utility i (fun j => DSimplex.vertex (p j)) = G.payoff i p := by
-  simp only [utility, DSimplex.vertex_val, Finset.mem_singleton]
-  have mem_iff : ∀ q : PureProfile N V,
-      (∀ j : N, q j = p j) ↔ q = p :=
-    fun q => ⟨fun h => funext h, fun h j => congr_fun h j⟩
-  have key : ∀ c : Outcome,
-      (∀ q, (∀ j, q j = p j) → G.payoff i q = c) ↔ G.payoff i p = c := by
-    intro c; constructor
-    · intro h; exact h p (fun _ => rfl)
-    · intro h q hq; rwa [(mem_iff q).mp hq]
-  simp only [Finset.mem_filter, Finset.mem_univ, true_and] at *
-  simp only [key]
-  split_ifs with h1 h2
-  · exact h1.symm
-  · exact h2.symm
-  · rcases hp : G.payoff i p with _ | _ | _ <;> simp_all
-
-end Game
-
--- ================================================================
--- Part 4: 2×2 Games
--- ================================================================
-
-/-- A 2-player, 2-action game. -/
-abbrev TwoByTwoGame := Game (Fin 2) (fun _ => Fin 2)
-
-/-- The interior of the 2-element simplex: the face {0, 1}. -/
-def interior2 : DSimplex (Fin 2) :=
-  DSimplex.mix (DSimplex.vertex 0) (DSimplex.vertex 1)
-
-/-- Nash existence for all 2×2 games: every 2-player 2-action game
-    has at least one Nash equilibrium in the discrete simplex model. -/
-theorem nash_exists_2x2 :
-    ∀ G : TwoByTwoGame,
-      ∃ σ : Profile (Fin 2) (fun _ => Fin 2), G.isNashEquilibrium σ := by
-  native_decide
-
--- ================================================================
--- Part 5: Examples
--- ================================================================
-
-/-- Matching Pennies: player 0 wants to match, player 1 wants to
-    mismatch. The unique Nash equilibrium is (interior, interior). -/
-def matchingPennies : TwoByTwoGame where
-  payoff i p :=
-    if i = 0 then (if p 0 = p 1 then .hi else .lo)
-    else (if p 0 = p 1 then .lo else .hi)
-
-theorem matchingPennies_unique_nash :
-    ∀ σ : Profile (Fin 2) (fun _ => Fin 2),
-      matchingPennies.isNashEquilibrium σ ↔ σ = fun _ => interior2 := by
-  native_decide
-
-/-- Prisoner's Dilemma. Actions: D=0, C=1.
-    payoff(D,C) = hi, payoff(C,D) = lo, payoff(D,D) = payoff(C,C) = mid.
-    D dominates C; the unique Nash equilibrium is (D, D). -/
-def prisonersDilemma : TwoByTwoGame where
-  payoff i p :=
-    let me := p i
-    let opp := p (if i = 0 then 1 else 0)
-    if me = 0 ∧ opp = 1 then .hi
-    else if me = 1 ∧ opp = 0 then .lo
-    else .mid
-
-theorem prisonersDilemma_nash :
-    prisonersDilemma.isNashEquilibrium
-      (fun _ => DSimplex.vertex 0) := by
-  native_decide
-
-/-- Battle of the Sexes. Both prefer coordination, but disagree on
-    which option. Player 0 prefers option 0, player 1 prefers option 1.
-    Three Nash equilibria: (0,0), (1,1), and (interior, interior). -/
-def battleOfSexes : TwoByTwoGame where
-  payoff i p :=
-    if p 0 ≠ p 1 then .lo
-    else if p 0 = i then .hi
-    else .mid
-
-theorem battleOfSexes_nash_00 :
-    battleOfSexes.isNashEquilibrium
-      (fun _ => DSimplex.vertex 0) := by
-  native_decide
-
-theorem battleOfSexes_nash_11 :
-    battleOfSexes.isNashEquilibrium
-      (fun _ => DSimplex.vertex 1) := by
-  native_decide
-
-theorem battleOfSexes_nash_interior :
-    battleOfSexes.isNashEquilibrium (fun _ => interior2) := by
-  native_decide
-
-end SyntheticGameTheory
+-- Later stuff will go here
