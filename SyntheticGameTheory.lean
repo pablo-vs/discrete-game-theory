@@ -96,15 +96,232 @@ abbrev Profile (N : Type*) (V : N → Type*) [∀ i, DecidableEq (V i)] :=
     updated to play s". -/
 notation:max σ:max "[" i " ↦ " s "]" => Function.update σ i s
 
+/-- A pure profile `p` is consistent with a mixed profile `σ` if each action is
+    in the support of the corresponding face. -/
+def Consistent
+    {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
+    (σ : Profile N V) (p : PureProfile N V) : Prop :=
+  ∀ i, p i ∈ DSimplex.support (σ i)
+
+/-- Every mixed profile has a consistent pure profile. -/
+theorem exists_consistent
+    {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
+    (σ : Profile N V) : ∃ p : PureProfile N V, Consistent σ p := by
+  classical
+  refine ⟨fun i => Classical.choose (σ i).2, ?_⟩
+  intro i
+  exact Classical.choose_spec (σ i).2
+
+/-- Face order on mixed profiles induced by a relation on pure profiles:
+    all consistent pure profiles of `σ` are related to all consistent pure
+    profiles of `τ`. -/
+def FaceLE
+    {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
+    (r : PureProfile N V → PureProfile N V → Prop)
+    (σ τ : Profile N V) : Prop :=
+  ∀ p, Consistent σ p → ∀ q, Consistent τ q → r p q
+
+/-- Reflexive closure of `FaceLE`. -/
+def FaceLEr
+    {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
+    (r : PureProfile N V → PureProfile N V → Prop)
+    (σ τ : Profile N V) : Prop :=
+  σ = τ ∨ FaceLE r σ τ
+
+theorem faceLE_trans
+    {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
+    (r : PureProfile N V → PureProfile N V → Prop)
+    (hr : IsPreorder (PureProfile N V) r) :
+    IsTrans (Profile N V) (FaceLE r) := by
+  refine ⟨?trans⟩
+  intro σ τ υ hστ hτυ p hpσ q hpυ
+  classical
+  obtain ⟨m, hm⟩ := exists_consistent τ
+  have h1 := hστ p hpσ m hm
+  have h2 := hτυ m hm q hpυ
+  exact hr.trans (a := p) (b := m) (c := q) h1 h2
+
+theorem faceLEr_trans
+    {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
+    (r : PureProfile N V → PureProfile N V → Prop)
+    (hr : IsPreorder (PureProfile N V) r) :
+    IsTrans (Profile N V) (FaceLEr r) := by
+  refine ⟨?trans⟩
+  intro σ τ υ hστ hτυ
+  cases hστ with
+  | inl h =>
+      simpa [h] using hτυ
+  | inr h =>
+      cases hτυ with
+      | inl h' => simpa [h'] using (Or.inr h)
+      | inr h' =>
+          have htrans := faceLE_trans (r := r) hr
+          exact Or.inr (htrans.trans (a := σ) (b := τ) (c := υ) h h')
+
+/-- Decidability of consistency when players are finite. -/
+instance instDecidablePredConsistent
+    {N : Type*} {V : N → Type*} [DecidableEq N] [Fintype N]
+    [∀ i, DecidableEq (V i)]
+    (σ : Profile N V) : DecidablePred (Consistent σ) := by
+  intro p
+  simpa [Consistent] using
+    (Fintype.decidableForallFintype (p := fun i => p i ∈ DSimplex.support (σ i)))
+
+/-- Decidability of `FaceLE` when pure profiles are finite. -/
+instance instDecidableFaceLE
+    {N : Type*} {V : N → Type*} [DecidableEq N] [Fintype N] [∀ i, Fintype (V i)]
+    [∀ i, DecidableEq (V i)]
+    (r : PureProfile N V → PureProfile N V → Prop) [DecidableRel r]
+    (σ τ : Profile N V) : Decidable (FaceLE r σ τ) := by
+  -- `FaceLE` is a finite ∀-∀ statement over pure profiles.
+  letI : DecidablePred (fun p => Consistent σ p → ∀ q, Consistent τ q → r p q) := by
+    intro p
+    letI : Decidable (Consistent σ p) := inferInstance
+    letI : DecidablePred (fun q => Consistent τ q → r p q) := by
+      intro q
+      infer_instance
+    letI : Decidable (∀ q, Consistent τ q → r p q) :=
+      (Fintype.decidableForallFintype (p := fun q => Consistent τ q → r p q))
+    infer_instance
+  simpa [FaceLE] using
+    (Fintype.decidableForallFintype
+      (p := fun p => Consistent σ p → ∀ q, Consistent τ q → r p q))
+
+/-- Decidability of the reflexive closure. -/
+instance instDecidableFaceLEr
+    {N : Type*} {V : N → Type*} [DecidableEq N] [Fintype N] [∀ i, Fintype (V i)]
+    [∀ i, DecidableEq (V i)]
+    (r : PureProfile N V → PureProfile N V → Prop) [DecidableRel r]
+    (σ τ : Profile N V) : Decidable (FaceLEr r σ τ) := by
+  -- Decide equality first, then fall back to `FaceLE`.
+  by_cases hEq : σ = τ
+  · exact isTrue (Or.inl hEq)
+  ·
+    cases (inferInstance : Decidable (FaceLE r σ τ)) with
+    | isTrue hFace => exact isTrue (Or.inr hFace)
+    | isFalse hFace =>
+        exact isFalse (by
+          intro h
+          cases h with
+          | inl h => exact hEq h
+          | inr h => exact hFace h)
+
+/-- Local totality of a relation on pure profiles:
+    holding opponents fixed at `p`, player `i`'s pure deviations are comparable. -/
+def LocallyTotal
+    {N : Type*} [DecidableEq N] {V : N → Type*}
+    (pref : PureProfile N V → PureProfile N V → Prop) : Prop :=
+  ∀ i : N, ∀ p : PureProfile N V,
+    Std.Total (fun a b : V i => pref (p[i ↦ a]) (p[i ↦ b]))
+
 /-- A game: N players, V i actions for player i, payoffs on pure profiles.
     Only pure-profile payoffs are stored; extended utility is derived. -/
 structure Game (N : Type*) [DecidableEq N] [Fintype N]
     (V : N → Type*) [∀ i, DecidableEq (V i)] [∀ i, Fintype (V i)] where
-    -- TODO: payoff: one preorder on pure profiles for each player such that holding p{-i} fixed, pure deviations of player i are totally ordered.
+    /-- Player `i`'s preference preorder on pure profiles. -/
+    pref : N → PureProfile N V → PureProfile N V → Prop
+    /-- Each player's preference is a preorder on pure profiles. -/
+    pref_preorder : ∀ i : N, IsPreorder (PureProfile N V) (pref i)
+    /-- Preference is decidable for each player. -/
+    pref_decidable : ∀ i : N, DecidableRel (pref i)
+    /-- Local totality on pure deviations. -/
+    pref_locally_total : ∀ i : N, LocallyTotal (pref i)
 
 namespace Game
 
 variable {N : Type*} [DecidableEq N] [Fintype N]
 variable {V : N → Type*} [∀ i, DecidableEq (V i)] [∀ i, Fintype (V i)]
 
--- Later stuff will go here
+variable (G : Game N V)
+
+/-- Deviation order on pure actions induced by `FaceLEr` on mixed profiles. -/
+def DevActionLE (i : N) (σ : Profile N V) (a b : V i) : Prop :=
+  FaceLEr (G.pref i) (σ[i ↦ DSimplex.vertex a]) (σ[i ↦ DSimplex.vertex b])
+
+/-- A pure action is top against a mixed profile `σ` if it is maximal among deviations. -/
+def IsTopAction (i : N) (σ : Profile N V) (a : V i) : Prop :=
+  ∀ b : V i, G.DevActionLE i σ a b → G.DevActionLE i σ b a
+
+/-- Decidability of `IsTopAction` when action sets are finite. -/
+instance instDecidablePredIsTopAction (i : N) (σ : Profile N V) :
+    DecidablePred (G.IsTopAction i σ) := by
+  letI := G.pref_decidable i
+  intro a
+  simpa [IsTopAction, DevActionLE] using
+    (Fintype.decidableForallFintype
+      (p := fun b : V i =>
+        FaceLEr (G.pref i) (σ[i ↦ DSimplex.vertex a]) (σ[i ↦ DSimplex.vertex b]) →
+          FaceLEr (G.pref i) (σ[i ↦ DSimplex.vertex b]) (σ[i ↦ DSimplex.vertex a])))
+
+/-- The set of all top actions against `σ`. -/
+def TopActions (i : N) (σ : Profile N V) : Finset (V i) := by
+  letI := G.pref_decidable i
+  exact Finset.univ.filter (G.IsTopAction i σ)
+
+@[simp]
+theorem mem_topActions (i : N) (σ : Profile N V) (a : V i) :
+    a ∈ G.TopActions i σ ↔ G.IsTopAction i σ a := by
+  letI := G.pref_decidable i
+  simp [TopActions, IsTopAction, DevActionLE]
+
+section Nonempty
+
+variable [∀ i, Nonempty (V i)]
+
+theorem exists_topAction (i : N) (σ : Profile N V) :
+    ∃ a : V i, G.IsTopAction i σ a := by
+  classical
+  let r : V i → V i → Prop := G.DevActionLE i σ
+  let _ : LE (V i) := ⟨r⟩
+  have htrans : IsTrans (V i) r := by
+    refine ⟨?trans⟩
+    intro a b c hab hbc
+    have htrans' := faceLEr_trans (r := G.pref i) (hr := G.pref_preorder i)
+    exact htrans'.trans
+      (a := σ[i ↦ DSimplex.vertex a])
+      (b := σ[i ↦ DSimplex.vertex b])
+      (c := σ[i ↦ DSimplex.vertex c]) hab hbc
+  let _ : IsTrans (V i) (· ≤ ·) := htrans
+  have hne : (Finset.univ : Finset (V i)).Nonempty := Finset.univ_nonempty
+  rcases (Finset.exists_maximal (s := (Finset.univ : Finset (V i))) hne) with ⟨a, ha⟩
+  refine ⟨a, ?_⟩
+  intro b hb
+  have hb' : b ∈ (Finset.univ : Finset (V i)) := by simp
+  exact ha.2 hb' hb
+
+theorem topActions_nonempty (i : N) (σ : Profile N V) :
+    (G.TopActions i σ).Nonempty := by
+  classical
+  rcases G.exists_topAction i σ with ⟨a, ha⟩
+  refine ⟨a, ?_⟩
+  simpa using (G.mem_topActions i σ a).2 ha
+
+/-- The best response face: the face spanned by all top actions. -/
+def BestResponseFace (i : N) (σ : Profile N V) : DSimplex (V i) :=
+  DSimplex.face (G.topActions_nonempty i σ)
+
+/-- The joint best response map. -/
+def jointBR (σ : Profile N V) : Profile N V :=
+  fun i => G.BestResponseFace i σ
+
+theorem jointBR_periodic (σ : Profile N V) :
+    ∃ m n : ℕ, m < n ∧ (G.jointBR^[m]) σ = (G.jointBR^[n]) σ := by
+  classical
+  let f : Fin (Fintype.card (Profile N V) + 1) → Profile N V :=
+    fun k => (G.jointBR^[k]) σ
+  have hcard : Fintype.card (Profile N V) <
+      Fintype.card (Fin (Fintype.card (Profile N V) + 1)) := by
+    simp
+  rcases Fintype.exists_ne_map_eq_of_card_lt f hcard with ⟨i, j, hne, hEq⟩
+  have hlt : i < j ∨ j < i := lt_or_gt_of_ne hne
+  cases hlt with
+  | inl hlt =>
+      refine ⟨i.1, j.1, ?_, ?_⟩
+      · exact (Fin.lt_def).1 hlt
+      · simpa using hEq
+  | inr hlt =>
+      refine ⟨j.1, i.1, ?_, ?_⟩
+      · exact (Fin.lt_def).1 hlt
+      · simpa using hEq.symm
+
+end Nonempty
