@@ -180,6 +180,66 @@ theorem ProfileLE_update_left
     simpa [DSimplex.IsSubface] using h
   · simp [hji, DSimplex.IsSubface]
 
+theorem ProfileLE_foldl_mix_left
+    {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
+    (σ : Profile N V) (l : List (Profile N V)) :
+    ProfileLE σ (l.foldl Profile.mix σ) := by
+  induction l generalizing σ with
+  | nil =>
+      simpa using ProfileLE_refl σ
+  | cons x xs ih =>
+      dsimp [List.foldl]
+      have h1 : ProfileLE σ (Profile.mix σ x) := ProfileLE_mix_left σ x
+      have h2 : ProfileLE (Profile.mix σ x) (xs.foldl Profile.mix (Profile.mix σ x)) :=
+        ih (σ := Profile.mix σ x)
+      exact ProfileLE_trans h1 h2
+
+theorem ProfileLE_foldl_mix_of_mem
+    {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
+    (σ : Profile N V) (l : List (Profile N V)) {τ : Profile N V}
+    (hmem : τ ∈ l) :
+    ProfileLE τ (l.foldl Profile.mix σ) := by
+  induction l generalizing σ with
+  | nil =>
+      cases hmem
+  | cons x xs ih =>
+      have hmem' : τ = x ∨ τ ∈ xs := (List.mem_cons).1 hmem
+      cases hmem' with
+      | inl hτ =>
+          subst hτ
+          dsimp [List.foldl]
+          have h1 : ProfileLE τ (Profile.mix σ τ) := ProfileLE_mix_right σ τ
+          have h2 : ProfileLE (Profile.mix σ τ) (xs.foldl Profile.mix (Profile.mix σ τ)) :=
+            ProfileLE_foldl_mix_left (Profile.mix σ τ) xs
+          exact ProfileLE_trans h1 h2
+      | inr hτ =>
+          dsimp [List.foldl]
+          exact ih (σ := Profile.mix σ x) hτ
+
+def Profile.mixList
+    {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
+    (l : List (Profile N V)) (hne : l ≠ []) : Profile N V :=
+  match l with
+  | [] => (hne rfl).elim
+  | x :: xs => xs.foldl Profile.mix x
+
+theorem ProfileLE_mixList_of_mem
+    {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
+    {l : List (Profile N V)} (hne : l ≠ [])
+    {σ : Profile N V} (hmem : σ ∈ l) :
+    ProfileLE σ (Profile.mixList l hne) := by
+  cases l with
+  | nil => cases hne rfl
+  | cons x xs =>
+      dsimp [Profile.mixList]
+      have hmem' : σ = x ∨ σ ∈ xs := (List.mem_cons).1 hmem
+      cases hmem' with
+      | inl hσ =>
+          subst hσ
+          exact ProfileLE_foldl_mix_left σ xs
+      | inr hσ =>
+          exact ProfileLE_foldl_mix_of_mem x xs hσ
+
 /-- A game: N players, V i actions for player i, payoffs on pure profiles. -/
 structure Game (N : Type*) [DecidableEq N] [Fintype N]
     (V : N → Type*) [∀ i, DecidableEq (V i)] [∀ i, Fintype (V i)] where
@@ -210,6 +270,10 @@ def StrictDev (i : N) (σ : Profile N V) (A : DSimplex (V i)) : Prop :=
 /-- A Nash equilibrium: no player has a strict unilateral deviation. -/
 def IsNash (σ : Profile N V) : Prop :=
   ∀ i : N, ∀ A : DSimplex (V i), ¬ G.StrictDev i σ A
+
+/-- A strict deviation step between profiles. -/
+def StrictDevStep (σ τ : Profile N V) : Prop :=
+  ∃ i : N, ∃ A : DSimplex (V i), τ = σ[i ↦ A] ∧ G.StrictDev i σ A
 
 /-- A defense against dominance of `B` by `A`. -/
 def Defends (i : N) (σ : Profile N V) (A B : DSimplex (V i)) : Prop :=
@@ -272,6 +336,45 @@ theorem Defends_mix_right
   intro hdef
   exact G.Defends_mono (i := i) (σ := τ) (τ := Profile.mix σ τ)
     (ProfileLE_mix_right σ τ) hdef
+
+theorem not_devfaceLE_mixList_of_strictDev
+    {i : N} {σ τ : Profile N V} {A : DSimplex (V i)}
+    {l : List (Profile N V)} (hne : l ≠ [])
+    (hτ : τ = σ[i ↦ A]) (hdev : G.StrictDev i σ A)
+    (hσ : σ ∈ l) (hτmem : τ ∈ l) :
+    ¬ G.DevFaceLE i (Profile.mixList l hne) ((Profile.mixList l hne) i) (σ i) := by
+  let M := Profile.mixList l hne
+  have hσM : ProfileLE σ M := ProfileLE_mixList_of_mem (l := l) hne hσ
+  have hτM : ProfileLE τ M := ProfileLE_mixList_of_mem (l := l) hne hτmem
+  have hBM : DSimplex.IsSubface A (M i) := by
+    have hsub : DSimplex.IsSubface (τ i) (M i) := hτM i
+    simpa [hτ] using hsub
+  have hdef : G.Defends i M A (σ i) := by
+    have hdef0 : G.Defends i σ A (σ i) := hdev.2
+    exact G.Defends_mono (i := i) (σ := σ) (τ := M) hσM hdef0
+  intro hle
+  have hle' : G.DevFaceLE i M A (σ i) :=
+    G.DevFaceLE_left_mono (i := i) (σ := M) (A := A) (A' := M i) (B := σ i) hBM hle
+  exact hdef hle'
+
+theorem not_strictDev_mixList_of_strictDev
+    {i : N} {σ τ : Profile N V} {A : DSimplex (V i)}
+    {l : List (Profile N V)} (hne : l ≠ [])
+    (hτ : τ = σ[i ↦ A]) (hdev : G.StrictDev i σ A)
+    (hσ : σ ∈ l) (hτmem : τ ∈ l) :
+    ¬ G.StrictDev i (Profile.mixList l hne) (σ i) := by
+  intro h
+  exact (G.not_devfaceLE_mixList_of_strictDev (i := i) (σ := σ) (τ := τ)
+    (A := A) (l := l) hne hτ hdev hσ hτmem) h.1
+
+theorem not_strictDev_mixList_of_step_in_list
+    {σ τ : Profile N V} {l : List (Profile N V)} (hne : l ≠ [])
+    (hstep : G.StrictDevStep σ τ) (hσ : σ ∈ l) (hτ : τ ∈ l) :
+    ∃ i : N, ¬ G.StrictDev i (Profile.mixList l hne) (σ i) := by
+  rcases hstep with ⟨i, A, hτ', hdev⟩
+  refine ⟨i, ?_⟩
+  exact G.not_strictDev_mixList_of_strictDev (i := i) (σ := σ) (τ := τ)
+    (A := A) (l := l) hne hτ' hdev hσ hτ
 
 theorem StrictDev_defends
     {i : N} {σ : Profile N V} {A : DSimplex (V i)} :
