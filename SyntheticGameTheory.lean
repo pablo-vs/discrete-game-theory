@@ -103,6 +103,32 @@ def Consistent
     (σ : Profile N V) (p : PureProfile N V) : Prop :=
   ∀ i, p i ∈ DSimplex.support (σ i)
 
+/-- Pointwise subface order on profiles. -/
+def ProfileLE
+    {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
+    (σ τ : Profile N V) : Prop :=
+  ∀ i, DSimplex.IsSubface (σ i) (τ i)
+
+theorem Consistent_mono
+    {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
+    {σ τ : Profile N V} (h : ProfileLE σ τ) {p : PureProfile N V} :
+    Consistent σ p → Consistent τ p := by
+  intro hσ i
+  have hsub : DSimplex.support (σ i) ⊆ DSimplex.support (τ i) := by
+    simpa [DSimplex.IsSubface] using h i
+  exact hsub (hσ i)
+
+theorem ProfileLE_update
+    {N : Type*} {V : N → Type*} [DecidableEq N] [∀ i, DecidableEq (V i)]
+    {σ τ : Profile N V} (h : ProfileLE σ τ)
+    (i : N) (A : DSimplex (V i)) :
+    ProfileLE (σ[i ↦ A]) (τ[i ↦ A]) := by
+  intro j
+  by_cases hji : j = i
+  · subst hji
+    simp [ProfileLE, DSimplex.IsSubface]
+  · simp [ProfileLE, hji, h j]
+
 /-- Every mixed profile has a consistent pure profile. -/
 theorem exists_consistent
     {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
@@ -111,52 +137,6 @@ theorem exists_consistent
   refine ⟨fun i => Classical.choose (σ i).2, ?_⟩
   intro i
   exact Classical.choose_spec (σ i).2
-
-/-- Face order on mixed profiles induced by a relation on pure profiles:
-    all consistent pure profiles of `σ` are related to all consistent pure
-    profiles of `τ`. -/
-def FaceLE
-    {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
-    (r : PureProfile N V → PureProfile N V → Prop)
-    (σ τ : Profile N V) : Prop :=
-  ∀ p, Consistent σ p → ∀ q, Consistent τ q → r p q
-
-/-- Reflexive closure of `FaceLE`. -/
-def FaceLEr
-    {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
-    (r : PureProfile N V → PureProfile N V → Prop)
-    (σ τ : Profile N V) : Prop :=
-  σ = τ ∨ FaceLE r σ τ
-
-theorem faceLE_trans
-    {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
-    (r : PureProfile N V → PureProfile N V → Prop)
-    (hr : IsPreorder (PureProfile N V) r) :
-    IsTrans (Profile N V) (FaceLE r) := by
-  refine ⟨?trans⟩
-  intro σ τ υ hστ hτυ p hpσ q hpυ
-  classical
-  obtain ⟨m, hm⟩ := exists_consistent τ
-  have h1 := hστ p hpσ m hm
-  have h2 := hτυ m hm q hpυ
-  exact hr.trans (a := p) (b := m) (c := q) h1 h2
-
-theorem faceLEr_trans
-    {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
-    (r : PureProfile N V → PureProfile N V → Prop)
-    (hr : IsPreorder (PureProfile N V) r) :
-    IsTrans (Profile N V) (FaceLEr r) := by
-  refine ⟨?trans⟩
-  intro σ τ υ hστ hτυ
-  cases hστ with
-  | inl h =>
-      simpa [h] using hτυ
-  | inr h =>
-      cases hτυ with
-      | inl h' => simpa [h'] using (Or.inr h)
-      | inr h' =>
-          have htrans := faceLE_trans (r := r) hr
-          exact Or.inr (htrans.trans (a := σ) (b := τ) (c := υ) h h')
 
 /-- Decidability of consistency when players are finite. -/
 instance instDecidablePredConsistent
@@ -167,53 +147,6 @@ instance instDecidablePredConsistent
   simpa [Consistent] using
     (Fintype.decidableForallFintype (p := fun i => p i ∈ DSimplex.support (σ i)))
 
-/-- Decidability of `FaceLE` when pure profiles are finite. -/
-instance instDecidableFaceLE
-    {N : Type*} {V : N → Type*} [DecidableEq N] [Fintype N] [∀ i, Fintype (V i)]
-    [∀ i, DecidableEq (V i)]
-    (r : PureProfile N V → PureProfile N V → Prop) [DecidableRel r]
-    (σ τ : Profile N V) : Decidable (FaceLE r σ τ) := by
-  -- `FaceLE` is a finite ∀-∀ statement over pure profiles.
-  letI : DecidablePred (fun p => Consistent σ p → ∀ q, Consistent τ q → r p q) := by
-    intro p
-    letI : Decidable (Consistent σ p) := inferInstance
-    letI : DecidablePred (fun q => Consistent τ q → r p q) := by
-      intro q
-      infer_instance
-    letI : Decidable (∀ q, Consistent τ q → r p q) :=
-      (Fintype.decidableForallFintype (p := fun q => Consistent τ q → r p q))
-    infer_instance
-  simpa [FaceLE] using
-    (Fintype.decidableForallFintype
-      (p := fun p => Consistent σ p → ∀ q, Consistent τ q → r p q))
-
-/-- Decidability of the reflexive closure. -/
-instance instDecidableFaceLEr
-    {N : Type*} {V : N → Type*} [DecidableEq N] [Fintype N] [∀ i, Fintype (V i)]
-    [∀ i, DecidableEq (V i)]
-    (r : PureProfile N V → PureProfile N V → Prop) [DecidableRel r]
-    (σ τ : Profile N V) : Decidable (FaceLEr r σ τ) := by
-  -- Decide equality first, then fall back to `FaceLE`.
-  by_cases hEq : σ = τ
-  · exact isTrue (Or.inl hEq)
-  ·
-    cases (inferInstance : Decidable (FaceLE r σ τ)) with
-    | isTrue hFace => exact isTrue (Or.inr hFace)
-    | isFalse hFace =>
-        exact isFalse (by
-          intro h
-          cases h with
-          | inl h => exact hEq h
-          | inr h => exact hFace h)
-
-/-- Local totality of a relation on pure profiles:
-    holding opponents fixed at `p`, player `i`'s pure deviations are comparable. -/
-def LocallyTotal
-    {N : Type*} [DecidableEq N] {V : N → Type*}
-    (pref : PureProfile N V → PureProfile N V → Prop) : Prop :=
-  ∀ i : N, ∀ p : PureProfile N V,
-    Std.Total (fun a b : V i => pref (p[i ↦ a]) (p[i ↦ b]))
-
 /-- A game: N players, V i actions for player i, payoffs on pure profiles.
     Only pure-profile payoffs are stored; extended utility is derived. -/
 structure Game (N : Type*) [DecidableEq N] [Fintype N]
@@ -222,10 +155,10 @@ structure Game (N : Type*) [DecidableEq N] [Fintype N]
     pref : N → PureProfile N V → PureProfile N V → Prop
     /-- Each player's preference is a preorder on pure profiles. -/
     pref_preorder : ∀ i : N, IsPreorder (PureProfile N V) (pref i)
+    /-- Each player's preference is total on pure profiles. -/
+    pref_total : ∀ i : N, IsTotal (PureProfile N V) (pref i)
     /-- Preference is decidable for each player. -/
     pref_decidable : ∀ i : N, DecidableRel (pref i)
-    /-- Local totality on pure deviations. -/
-    pref_locally_total : ∀ i : N, LocallyTotal (pref i)
 
 namespace Game
 
@@ -234,13 +167,101 @@ variable {V : N → Type*} [∀ i, DecidableEq (V i)] [∀ i, Fintype (V i)]
 
 variable (G : Game N V)
 
-/-- Deviation order on pure actions induced by `FaceLEr` on mixed profiles. -/
+/-- Face order on deviations in player `i`'s simplex against profile `σ`. -/
+def DevFaceLE (i : N) (σ : Profile N V) (A B : DSimplex (V i)) : Prop :=
+  ∀ p, Consistent (σ[i ↦ A]) p → ∀ q, Consistent (σ[i ↦ B]) q → G.pref i p q
+
+/-- Deviation order on pure actions as singleton faces. -/
 def DevActionLE (i : N) (σ : Profile N V) (a b : V i) : Prop :=
-  FaceLEr (G.pref i) (σ[i ↦ DSimplex.vertex a]) (σ[i ↦ DSimplex.vertex b])
+  G.DevFaceLE i σ (DSimplex.vertex a) (DSimplex.vertex b)
+
+/-- `DevFaceLE` is antitone in the profile argument: enlarging opponents makes the
+    relation harder to satisfy. -/
+theorem DevFaceLE_antitone
+    {σ τ : Profile N V} (h : ProfileLE σ τ)
+    (i : N) (A B : DSimplex (V i)) :
+    G.DevFaceLE i τ A B → G.DevFaceLE i σ A B := by
+  intro hdev p hp q hq
+  have hσA : Consistent (τ[i ↦ A]) p := by
+    apply Consistent_mono (ProfileLE_update h i A)
+    exact hp
+  have hσB : Consistent (τ[i ↦ B]) q := by
+    apply Consistent_mono (ProfileLE_update h i B)
+    exact hq
+  exact hdev p hσA q hσB
+
+/-- `DevActionLE` is antitone in the profile argument. -/
+theorem DevActionLE_antitone
+    {σ τ : Profile N V} (h : ProfileLE σ τ)
+    (i : N) (a b : V i) :
+    G.DevActionLE i τ a b → G.DevActionLE i σ a b := by
+  intro hdev
+  simpa [DevActionLE] using (G.DevFaceLE_antitone (σ := σ) (τ := τ) h i
+    (DSimplex.vertex a) (DSimplex.vertex b) hdev)
+
+/-- `DevActionLE` depends only on the opponents' faces. -/
+theorem DevActionLE_congr_opponents
+    {σ τ : Profile N V} {i : N}
+    (h : ∀ j, j ≠ i → σ j = τ j) (a b : V i) :
+    G.DevActionLE i σ a b ↔ G.DevActionLE i τ a b := by
+  -- the updated profiles agree pointwise
+  have hA : σ[i ↦ DSimplex.vertex a] = τ[i ↦ DSimplex.vertex a] := by
+    funext j
+    by_cases hji : j = i
+    · subst hji; simp
+    · simp [hji, h j hji]
+  have hB : σ[i ↦ DSimplex.vertex b] = τ[i ↦ DSimplex.vertex b] := by
+    funext j
+    by_cases hji : j = i
+    · subst hji; simp
+    · simp [hji, h j hji]
+  -- rewrite both sides using hA/hB
+  simp [DevActionLE, DevFaceLE, hA, hB]
 
 /-- A pure action is top against a mixed profile `σ` if it is maximal among deviations. -/
 def IsTopAction (i : N) (σ : Profile N V) (a : V i) : Prop :=
   ∀ b : V i, G.DevActionLE i σ a b → G.DevActionLE i σ b a
+
+/-- `IsTopAction` depends only on the opponents' faces. -/
+theorem IsTopAction_congr_opponents
+    {σ τ : Profile N V} {i : N}
+    (h : ∀ j, j ≠ i → σ j = τ j) (a : V i) :
+    G.IsTopAction i σ a ↔ G.IsTopAction i τ a := by
+  constructor
+  · intro htop b hb
+    have hb' : G.DevActionLE i σ a b := (G.DevActionLE_congr_opponents (i := i) h a b).mpr hb
+    have hba : G.DevActionLE i σ b a := htop b hb'
+    exact (G.DevActionLE_congr_opponents (i := i) h b a).mp hba
+  · intro htop b hb
+    have hb' : G.DevActionLE i τ a b := (G.DevActionLE_congr_opponents (i := i) h a b).mp hb
+    have hba : G.DevActionLE i τ b a := htop b hb'
+    exact (G.DevActionLE_congr_opponents (i := i) h b a).mpr hba
+
+/-- Decidability of `DevFaceLE` when pure profiles are finite. -/
+instance instDecidableDevFaceLE (i : N) (σ : Profile N V)
+    (A B : DSimplex (V i)) : Decidable (G.DevFaceLE i σ A B) := by
+  letI := G.pref_decidable i
+  -- `DevFaceLE` is a finite ∀-∀ statement over pure profiles.
+  letI :
+      DecidablePred
+        (fun p =>
+          Consistent (σ[i ↦ A]) p →
+            ∀ q, Consistent (σ[i ↦ B]) q → G.pref i p q) := by
+    intro p
+    letI : Decidable (Consistent (σ[i ↦ A]) p) := inferInstance
+    letI : DecidablePred (fun q => Consistent (σ[i ↦ B]) q → G.pref i p q) := by
+      intro q
+      infer_instance
+    letI :
+        Decidable (∀ q, Consistent (σ[i ↦ B]) q → G.pref i p q) :=
+      (Fintype.decidableForallFintype
+        (p := fun q => Consistent (σ[i ↦ B]) q → G.pref i p q))
+    infer_instance
+  simpa [DevFaceLE] using
+    (Fintype.decidableForallFintype
+      (p := fun p =>
+        Consistent (σ[i ↦ A]) p →
+          ∀ q, Consistent (σ[i ↦ B]) q → G.pref i p q))
 
 /-- Decidability of `IsTopAction` when action sets are finite. -/
 instance instDecidablePredIsTopAction (i : N) (σ : Profile N V) :
@@ -250,8 +271,8 @@ instance instDecidablePredIsTopAction (i : N) (σ : Profile N V) :
   simpa [IsTopAction, DevActionLE] using
     (Fintype.decidableForallFintype
       (p := fun b : V i =>
-        FaceLEr (G.pref i) (σ[i ↦ DSimplex.vertex a]) (σ[i ↦ DSimplex.vertex b]) →
-          FaceLEr (G.pref i) (σ[i ↦ DSimplex.vertex b]) (σ[i ↦ DSimplex.vertex a])))
+        G.DevFaceLE i σ (DSimplex.vertex a) (DSimplex.vertex b) →
+          G.DevFaceLE i σ (DSimplex.vertex b) (DSimplex.vertex a)))
 
 /-- The set of all top actions against `σ`. -/
 def TopActions (i : N) (σ : Profile N V) : Finset (V i) := by
@@ -276,11 +297,11 @@ theorem exists_topAction (i : N) (σ : Profile N V) :
   have htrans : IsTrans (V i) r := by
     refine ⟨?trans⟩
     intro a b c hab hbc
-    have htrans' := faceLEr_trans (r := G.pref i) (hr := G.pref_preorder i)
-    exact htrans'.trans
-      (a := σ[i ↦ DSimplex.vertex a])
-      (b := σ[i ↦ DSimplex.vertex b])
-      (c := σ[i ↦ DSimplex.vertex c]) hab hbc
+    intro p hp q hq
+    obtain ⟨m, hm⟩ := exists_consistent (σ[i ↦ DSimplex.vertex b])
+    have h1 := hab p hp m hm
+    have h2 := hbc m hm q hq
+    exact (G.pref_preorder i).trans p m q h1 h2
   let _ : IsTrans (V i) (· ≤ ·) := htrans
   have hne : (Finset.univ : Finset (V i)).Nonempty := Finset.univ_nonempty
   rcases (Finset.exists_maximal (s := (Finset.univ : Finset (V i))) hne) with ⟨a, ha⟩
@@ -300,9 +321,17 @@ theorem topActions_nonempty (i : N) (σ : Profile N V) :
 def BestResponseFace (i : N) (σ : Profile N V) : DSimplex (V i) :=
   DSimplex.face (G.topActions_nonempty i σ)
 
+@[simp] theorem support_BestResponseFace (i : N) (σ : Profile N V) :
+    DSimplex.support (G.BestResponseFace i σ) = G.TopActions i σ := rfl
+
 /-- The joint best response map. -/
 def jointBR (σ : Profile N V) : Profile N V :=
   fun i => G.BestResponseFace i σ
+
+/-- A Nash equilibrium: every player's current face is contained in their
+    best response face at the profile. -/
+def IsNash (σ : Profile N V) : Prop :=
+  ProfileLE σ (G.jointBR σ)
 
 theorem jointBR_periodic (σ : Profile N V) :
     ∃ m n : ℕ, m < n ∧ (G.jointBR^[m]) σ = (G.jointBR^[n]) σ := by
@@ -325,3 +354,149 @@ theorem jointBR_periodic (σ : Profile N V) :
       · simpa using hEq.symm
 
 end Nonempty
+
+-- ================================================================
+-- Part 3: 2x2 existence (face-level proof)
+-- ================================================================
+
+section TwoByTwo
+
+abbrev TwoPlayers := Fin 2
+abbrev TwoActions := Fin 2
+abbrev TwoPureProfile := PureProfile TwoPlayers (fun _ => TwoActions)
+abbrev TwoProfile := Profile TwoPlayers (fun _ => TwoActions)
+abbrev TwoGame := Game TwoPlayers (fun _ => TwoActions)
+
+def pureProfile (a b : TwoActions) : TwoPureProfile :=
+  fun i => if i = 0 then a else b
+
+def profile (a b : TwoActions) : TwoProfile :=
+  fun i => DSimplex.vertex (pureProfile a b i)
+
+def fullProfile : TwoProfile :=
+  fun _ => DSimplex.top
+
+lemma consistent_profile (a b : TwoActions) (p : TwoPureProfile) :
+    Consistent (profile a b) p ↔ p = pureProfile a b := by
+  constructor
+  · intro h
+    funext i
+    have hi := h i
+    simpa [profile, pureProfile, DSimplex.support] using hi
+  · intro h i
+    simpa [h, profile, pureProfile, DSimplex.support]
+
+lemma profile_le_full (σ : TwoProfile) : ProfileLE σ fullProfile := by
+  intro i
+  simp [ProfileLE, DSimplex.IsSubface, fullProfile, DSimplex.support, DSimplex.top]
+
+lemma fin2_eq_or_eq {a b c : Fin 2} (h : a ≠ b) : c = a ∨ c = b := by
+  fin_cases a <;> fin_cases b <;> fin_cases c <;> simp at h <;> simp
+
+lemma isTopAction_of_le_other
+    (G : TwoGame) (i : TwoPlayers) (σ : TwoProfile)
+    (a b : TwoActions) (h : G.DevActionLE i σ a b) (hne : a ≠ b) :
+    G.IsTopAction i σ b := by
+  intro c hc
+  have hcases := fin2_eq_or_eq (a := a) (b := b) (c := c) hne
+  cases hcases with
+  | inl hca =>
+      subst hca
+      exact h
+  | inr hcb =>
+      subst hcb
+      exact hc
+
+lemma isNash_of_pure_top
+    (G : TwoGame) (a b : TwoActions)
+    (h0 : G.IsTopAction (i := (0 : Fin 2)) (profile a b) a)
+    (h1 : G.IsTopAction (i := (1 : Fin 2)) (profile a b) b) :
+    G.IsNash (profile a b) := by
+  intro i
+  fin_cases i
+  · have ha : a ∈ G.TopActions 0 (profile a b) := by
+      simpa [G.mem_topActions] using h0
+    have hsub : ({a} : Finset TwoActions) ⊆ G.TopActions 0 (profile a b) :=
+      (Finset.singleton_subset_iff.mpr ha)
+    change ({a} : Finset TwoActions) ⊆ G.TopActions 0 (profile a b)
+    exact hsub
+  · have hb : b ∈ G.TopActions 1 (profile a b) := by
+      simpa [G.mem_topActions] using h1
+    have hsub : ({b} : Finset TwoActions) ⊆ G.TopActions 1 (profile a b) :=
+      (Finset.singleton_subset_iff.mpr hb)
+    change ({b} : Finset TwoActions) ⊆ G.TopActions 1 (profile a b)
+    exact hsub
+
+theorem exists_nash_2x2 (G : TwoGame) :
+    ∃ σ : TwoProfile, G.IsNash σ := by
+  classical
+  let σfull : TwoProfile := fullProfile
+  by_cases hfull : G.IsNash σfull
+  · exact ⟨σfull, hfull⟩
+  · -- full profile not Nash: extract a strictly dominated action at full mix
+    have hnot : ¬ ProfileLE σfull (G.jointBR σfull) := by
+      simpa [IsNash] using hfull
+    obtain ⟨i, hi⟩ := not_forall.mp hnot
+    have hsubset :
+        ¬ DSimplex.support (σfull i) ⊆ DSimplex.support (G.BestResponseFace i σfull) := by
+      simpa [ProfileLE, DSimplex.IsSubface] using hi
+    rcases Finset.not_subset.mp hsubset with ⟨a, ha_full, ha_not⟩
+    have ha_not_top : ¬ G.IsTopAction i σfull a := by
+      have ha_not' : a ∉ G.TopActions i σfull := by
+        simpa [support_BestResponseFace] using ha_not
+      intro htop
+      exact ha_not' ((G.mem_topActions i σfull a).2 htop)
+    have hnot_top' :
+        ¬ ∀ b : TwoActions,
+          G.DevActionLE i σfull a b → G.DevActionLE i σfull b a := by
+      simpa [Game.IsTopAction] using ha_not_top
+    rcases not_forall.mp hnot_top' with ⟨b, hb⟩
+    have hle : G.DevActionLE i σfull a b := by
+      by_contra hle
+      have himp : G.DevActionLE i σfull a b → G.DevActionLE i σfull b a := by
+        intro h; exact (hle h).elim
+      exact hb himp
+    have hne : a ≠ b := by
+      by_contra hEq
+      subst hEq
+      exact hb (by intro h; exact h)
+    -- Case split on the player with the dominated action.
+    fin_cases i
+    · -- player 0: pick player 1's top response to b
+      have ⟨y, hy⟩ := G.exists_topAction (i := (1 : Fin 2)) (σ := profile b 0)
+      have hy' : G.IsTopAction (i := (1 : Fin 2)) (profile b y) y := by
+        -- opponent is player 0; profiles agree on player 0's face
+        have hcongr :
+            (∀ j, j ≠ (1 : Fin 2) → (profile b 0) j = (profile b y) j) := by
+          intro j hj
+          fin_cases j
+          · simp [profile, pureProfile]
+          · exact (hj rfl).elim
+        simpa using (Game.IsTopAction_congr_opponents (G := G) (i := (1 : Fin 2)) hcongr y).1 hy
+      have hle_by : G.DevActionLE (i := (0 : Fin 2)) (profile b y) a b := by
+        -- antitone: full → smaller
+        have hsub : ProfileLE (profile b y) σfull := profile_le_full (profile b y)
+        exact Game.DevActionLE_antitone (G := G) (σ := profile b y) (τ := σfull)
+          hsub (i := (0 : Fin 2)) (a := a) (b := b) hle
+      have htop0 : G.IsTopAction (i := (0 : Fin 2)) (profile b y) b :=
+        isTopAction_of_le_other G (i := (0 : Fin 2)) (σ := profile b y) a b hle_by hne
+      exact ⟨profile b y, isNash_of_pure_top G b y htop0 hy'⟩
+    · -- player 1: symmetric case
+      have ⟨x, hx⟩ := G.exists_topAction (i := (0 : Fin 2)) (σ := profile 0 b)
+      have hx' : G.IsTopAction (i := (0 : Fin 2)) (profile x b) x := by
+        have hcongr :
+            (∀ j, j ≠ (0 : Fin 2) → (profile 0 b) j = (profile x b) j) := by
+          intro j hj
+          fin_cases j
+          · exact (hj rfl).elim
+          · simp [profile, pureProfile]
+        simpa using (Game.IsTopAction_congr_opponents (G := G) (i := (0 : Fin 2)) hcongr x).1 hx
+      have hle_xb : G.DevActionLE (i := (1 : Fin 2)) (profile x b) a b := by
+        have hsub : ProfileLE (profile x b) σfull := profile_le_full (profile x b)
+        exact Game.DevActionLE_antitone (G := G) (σ := profile x b) (τ := σfull)
+          hsub (i := (1 : Fin 2)) (a := a) (b := b) hle
+      have htop1 : G.IsTopAction (i := (1 : Fin 2)) (profile x b) b :=
+        isTopAction_of_le_other G (i := (1 : Fin 2)) (σ := profile x b) a b hle_xb hne
+      exact ⟨profile x b, isNash_of_pure_top G x b hx' htop1⟩
+
+end TwoByTwo
