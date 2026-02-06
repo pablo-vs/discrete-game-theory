@@ -821,15 +821,26 @@ theorem exists_strictBestResponse_of_not_nash
   -- Yes.
   sorry -- Proof: Finite strict partial order property
 
-/-- The set of strict best response deviations at a profile. -/
+/-- A restricting strict best response: deviation to a proper subface. -/
+def RestrictingStrictBestResponse (i : N) (σ : Profile N V) (A : DSimplex (V i)) : Prop :=
+  G.StrictBestResponse i σ A ∧ DSimplex.IsSubface A (σ i) ∧ A ≠ σ i
+
+/-- The set of restricting strict best response deviations at a profile.
+    These are deviations that shrink the space (proper subfaces only). -/
 noncomputable def devSet (σ : Profile N V) : Finset (DevFace N V) := by
   classical
-  exact Finset.univ.filter (fun d => G.StrictBestResponse d.1 σ d.2)
+  exact Finset.univ.filter (fun d => G.RestrictingStrictBestResponse d.1 σ d.2)
+
+/-- When not Nash, there exists a restricting strict best response. -/
+theorem exists_restrictingStrictBestResponse_of_not_nash
+    {σ : Profile N V} (h : ¬ G.IsNash σ) :
+    ∃ i : N, ∃ A : DSimplex (V i), G.RestrictingStrictBestResponse i σ A := by
+  sorry -- TODO: Show that any StrictBestResponse can be restricted, or find one directly
 
 theorem devSet_nonempty {σ : Profile N V} (h : ¬ G.IsNash σ) :
     (devSet G σ).Nonempty := by
   classical
-  obtain ⟨i, A, hdev⟩ := G.exists_strictBestResponse_of_not_nash h
+  obtain ⟨i, A, hdev⟩ := G.exists_restrictingStrictBestResponse_of_not_nash h
   refine ⟨⟨i, A⟩, ?_⟩
   simp [devSet, hdev]
 
@@ -844,12 +855,12 @@ noncomputable def next (σ : Profile N V) : Profile N V := by
 theorem next_spec_not_nash
     {σ : Profile N V} (h : ¬ G.IsNash σ) :
     let d := (devSet G σ).min' (devSet_nonempty G h)
-    G.next σ = σ[d.1 ↦ d.2] ∧ G.StrictBestResponse d.1 σ d.2 := by
+    G.next σ = σ[d.1 ↦ d.2] ∧ G.RestrictingStrictBestResponse d.1 σ d.2 := by
   classical
   let d := (devSet G σ).min' (devSet_nonempty G h)
   have hmem : d ∈ devSet G σ := by
     exact Finset.min'_mem (devSet G σ) (devSet_nonempty G h)
-  have hdev : G.StrictBestResponse d.1 σ d.2 := by
+  have hdev : G.RestrictingStrictBestResponse d.1 σ d.2 := by
     simpa [devSet] using (Finset.mem_filter.mp hmem).2
   constructor
   · unfold next
@@ -861,7 +872,7 @@ theorem next_step_of_not_nash
     G.StrictBestResponseStep σ (G.next σ) := by
   have ⟨heq, hdev⟩ := G.next_spec_not_nash h
   let d := (devSet G σ).min' (devSet_nonempty G h)
-  refine ⟨d.1, d.2, ?_, hdev⟩
+  refine ⟨d.1, d.2, ?_, hdev.1⟩  -- Extract StrictBestResponse from RestrictingStrictBestResponse
   exact heq
 
 -- ----------------------------------------------------------------
@@ -930,56 +941,120 @@ theorem Defends_mix_right
     (ProfileLE_mix_right σ τ) hdef
 
 -- ================================================================
--- Section 5: Paths and Defense Lemmas (~250 lines)
+-- Section 5: Profile Size and Descent (~100 lines)
 -- ================================================================
 
--- ----------------------------------------------------------------
--- Section 5.1: Strict Deviation Paths
--- ----------------------------------------------------------------
+/-- Total number of vertices across all players' faces. -/
+def profileSize (σ : Profile N V) : ℕ :=
+  Finset.univ.sum (fun i => (σ i).1.card)
 
-/-- A Best Response is maximal if it is not a proper subface of another Best Response. -/
-def IsMaximalBestResponse (i : N) (σ : Profile N V) (A : DSimplex (V i)) : Prop :=
-  G.IsBestResponse i σ A ∧
-  ∀ B, G.IsBestResponse i σ B → DSimplex.IsSubface A B → A = B
+/-- Restricting strict best response implies proper subface (by definition). -/
+theorem RestrictingStrictBestResponse_proper_subface
+    {i : N} {σ : Profile N V} {A : DSimplex (V i)}
+    (h : G.RestrictingStrictBestResponse i σ A) :
+    DSimplex.IsSubface A (σ i) ∧ A ≠ σ i := by
+  exact ⟨h.2.1, h.2.2⟩
 
-/-- A strict deviation to a Maximal Best Response. -/
-def MaximalStrictBestResponse (i : N) (σ : Profile N V) (A : DSimplex (V i)) : Prop :=
-  G.StrictDev i σ A ∧ G.IsMaximalBestResponse i σ A
+/-- Profile size decreases under next step. -/
+theorem profileSize_decreases_next
+    {σ : Profile N V} (h : ¬ G.IsNash σ) :
+    profileSize (G.next σ) < profileSize σ := by
+  obtain ⟨heq, hdev⟩ := G.next_spec_not_nash h
+  let d := (devSet G σ).min' (devSet_nonempty G h)
+  rw [heq]
+  have ⟨hsub, hne⟩ := G.RestrictingStrictBestResponse_proper_subface hdev
+  unfold profileSize
+  -- The card at d.1 strictly decreases
+  have hcard : (d.2).1.card < (σ d.1).1.card := by
+    have : (d.2).1 ⊂ (σ d.1).1 := by
+      exact Finset.ssubset_iff_subset_ne.mpr ⟨hsub, fun h => hne (DSimplex.ext h)⟩
+    exact Finset.card_lt_card this
+  -- Decompose: sum over all = term at d.1 + sum over others
+  conv_lhs => rw [← Finset.sum_erase_add Finset.univ _ (Finset.mem_univ d.1)]
+  conv_rhs => rw [← Finset.sum_erase_add Finset.univ _ (Finset.mem_univ d.1)]
+  -- At d.1: (σ[d.1 ↦ d.2] d.1).1.card = (d.2).1.card < (σ d.1).1.card
+  -- Elsewhere: (σ[d.1 ↦ d.2] i).1.card = (σ i).1.card for i ≠ d.1
+  have h_at_d : ((σ[d.1 ↦ d.2]) d.1).1.card = (d.2).1.card := by
+    show (Function.update σ d.1 d.2 d.1).1.card = (d.2).1.card
+    unfold Function.update
+    split_ifs
+    · rfl
+    · contradiction
+  have h_elsewhere : ∀ i ∈ Finset.univ.erase d.1, ((σ[d.1 ↦ d.2]) i).1.card = (σ i).1.card := by
+    intro i hi
+    have hne : i ≠ d.1 := Finset.mem_erase.mp hi |>.1
+    show (Function.update σ d.1 d.2 i).1.card = (σ i).1.card
+    unfold Function.update
+    split_ifs with h
+    · subst h; contradiction
+    · rfl
+  rw [h_at_d]
+  rw [Finset.sum_congr rfl h_elsewhere]
+  omega
 
-/-- A strict deviation step to a Maximal Best Response. -/
-def MaximalStrictBestResponseStep (σ τ : Profile N V) : Prop :=
-  ∃ i A, τ = σ[i ↦ A] ∧ G.MaximalStrictBestResponse i σ A
+/-- Strict best response dominates the original face in restricted contexts. -/
+theorem StrictBestResponse_dominates_in_subprofiles
+    {i : N} {σ : Profile N V} {A : DSimplex (V i)}
+    (h : G.StrictBestResponse i σ A) :
+    ∀ τ, ProfileLE τ σ → G.DevFaceLE i τ (σ i) A := by
+  sorry -- TODO: Key lemma from PROOF_IDEA.md - dominance survives restriction
 
-/-- A path of maximal strict best response steps. -/
-def MaximalStrictBestResponsePath : List (Profile N V) → Prop
-  | [] => True
-  | [_] => True
-  | x :: y :: xs => G.MaximalStrictBestResponseStep x y ∧ MaximalStrictBestResponsePath (y :: xs)
+/-- When we move to a strict best response, the new profile inherits non-Nash-ness
+    or becomes Nash. This is the core of the descent argument. -/
+theorem next_preserves_or_creates_nash
+    (σ : Profile N V) :
+    G.IsNash (G.next σ) ∨ profileSize (G.next σ) < profileSize σ := by
+  by_cases h : G.IsNash σ
+  · left
+    unfold next
+    simp [h]
+  · right
+    exact G.profileSize_decreases_next h
 
-/-- A cycle of maximal strict best response steps. -/
-def MaximalStrictBestResponseCycle (l : List (Profile N V)) : Prop :=
-  ∃ x xs, l = x :: xs ∧
-    G.MaximalStrictBestResponsePath l ∧
-    G.MaximalStrictBestResponseStep ((x :: xs).getLast (by simp)) x
+-- ================================================================
+-- Section 6: Nash Existence via Well-Founded Descent
+-- ================================================================
 
--- ----------------------------------------------------------------
--- Section 8: Nash Existence - Path Analysis Approach
--- ----------------------------------------------------------------
+/-- Helper: maximal profile with all vertices. -/
+noncomputable def maximalProfile [∀ i, Nonempty (V i)] : Profile N V :=
+  fun _ => ⟨Finset.univ, Finset.univ_nonempty⟩
 
-/-- The mix of a Maximal Strict Best Response Cycle is a Nash equilibrium. -/
-theorem mix_of_MaximalStrictBestResponseCycle_is_Nash
-    {l : List (Profile N V)} (hne : l ≠ [])
-    (hcycle : G.MaximalStrictBestResponseCycle l) :
-    G.IsNash (Profile.mixList l hne) := by
-  sorry -- Key conjecture: Maximality closes the loophole
+/-- Upper bound on profile size. -/
+theorem profileSize_bounded {N : Type*} [Fintype N] [DecidableEq N]
+    {V : N → Type*} [∀ i, DecidableEq (V i)] [∀ i, Fintype (V i)]
+    (σ : Profile N V) :
+    profileSize σ ≤ Finset.univ.sum (fun i => Fintype.card (V i)) := by
+  unfold profileSize
+  apply Finset.sum_le_sum
+  intro i _
+  exact Finset.card_le_univ (σ i).1
 
-/-- Any infinite sequence of Maximal Strict Best Responses must cycle. -/
-theorem exists_cycle_in_infinite_maximal_path
-    (f : ℕ → Profile N V)
-    (h : ∀ n, G.MaximalStrictBestResponseStep (f n) (f (n + 1))) :
-    ∃ m k, m < k ∧ f m = f k := by
-  sorry -- Pigeonhole principle on finite Profile space
+/-- Decidability instance for IsNash. -/
+noncomputable instance instDecidableIsNash (σ : Profile N V) :
+    Decidable (G.IsNash σ) := by
+  classical
+  infer_instance
 
-/-- Nash existence via Maximal Best Response Cycles. -/
-theorem nash_exists_by_maximal_cycle : ∃ σ : Profile N V, G.IsNash σ := by
-  sorry -- Construct path, find cycle, mix is Nash
+/-- Constructive Nash finder using well-founded recursion on profile size. -/
+noncomputable def findNash (σ : Profile N V) : Profile N V :=
+  if h : G.IsNash σ then
+    σ
+  else
+    have : profileSize (G.next σ) < profileSize σ := G.profileSize_decreases_next h
+    findNash (G.next σ)
+termination_by profileSize σ
+
+/-- The result of findNash is always a Nash equilibrium. -/
+theorem findNash_is_nash (σ : Profile N V) :
+    G.IsNash (G.findNash σ) := by
+  unfold findNash
+  split
+  · assumption
+  · rename_i h
+    have : profileSize (G.next σ) < profileSize σ := G.profileSize_decreases_next h
+    exact findNash_is_nash (G.next σ)
+termination_by profileSize σ
+
+/-- Nash equilibrium existence - main theorem. -/
+theorem nash_exists [∀ i, Nonempty (V i)] : ∃ σ : Profile N V, G.IsNash σ := by
+  exact ⟨G.findNash (maximalProfile (N := N) (V := V)), G.findNash_is_nash _⟩
