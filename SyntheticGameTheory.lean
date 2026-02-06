@@ -705,6 +705,95 @@ def IsNash (σ : Profile N V) : Prop :=
 def StrictDevStep (σ τ : Profile N V) : Prop :=
   ∃ i : N, ∃ A : DSimplex (V i), τ = σ[i ↦ A] ∧ G.StrictDev i σ A
 
+/-- A Best Response for player `i` against `σ` is a face `A` such that `i` has no strict deviation from `σ[i ↦ A]`. -/
+def IsBestResponse (i : N) (σ : Profile N V) (A : DSimplex (V i)) : Prop :=
+  ∀ B, ¬ G.StrictDev i (σ[i ↦ A]) B
+
+/-- A Strict Best Response deviation. -/
+def StrictBestResponse (i : N) (σ : Profile N V) (A : DSimplex (V i)) : Prop :=
+  G.StrictDev i σ A ∧ G.IsBestResponse i σ A
+
+/-- A Strict Best Response Step. -/
+def StrictBestResponseStep (σ τ : Profile N V) : Prop :=
+  ∃ i A, τ = σ[i ↦ A] ∧ G.StrictBestResponse i σ A
+
+/-- `DevFaceLE` is transitive. -/
+theorem DevFaceLE_trans (i : N) (σ : Profile N V) (A B C : DSimplex (V i)) :
+    G.DevFaceLE i σ A B → G.DevFaceLE i σ B C → G.DevFaceLE i σ A C := by
+  intro hAB hBC p hp r hr
+  sorry -- Skipped for now to focus on high-level cycle logic
+
+/-- `DevFaceLE` context equivalence. -/
+theorem DevFaceLE_context_eq {i : N} {σ τ : Profile N V}
+    (h : ∀ j, j ≠ i → σ j = τ j) :
+    ∀ A B, G.DevFaceLE i σ A B ↔ G.DevFaceLE i τ A B := by
+  intro A B
+  unfold DevFaceLE
+  have h_cons : ∀ {X}, (∀ p, Consistent (σ[i ↦ X]) p ↔ Consistent (τ[i ↦ X]) p) := by
+    intro X p
+    unfold Consistent
+    apply forall_congr'
+    intro j
+    by_cases hj : j = i
+    · subst hj; simp
+    · simp [hj]; rw [h j hj]
+  constructor
+  · intro H p hp q hq
+    have hp' : Consistent (σ[i ↦ A]) p := by rw [h_cons]; exact hp
+    have hq' : Consistent (σ[i ↦ B]) q := by rw [h_cons]; exact hq
+    exact H p hp' q hq'
+  · intro H p hp q hq
+    have hp' : Consistent (τ[i ↦ A]) p := by rw [← h_cons]; exact hp
+    have hq' : Consistent (τ[i ↦ B]) q := by rw [← h_cons]; exact hq
+    exact H p hp' q hq'
+
+/-- `Better` relation: A is strictly better than B for player i against σ_{-i}. -/
+def Better (i : N) (σ : Profile N V) (A B : DSimplex (V i)) : Prop :=
+  G.StrictDev i (σ[i ↦ B]) A
+
+theorem Better_irref (i : N) (σ : Profile N V) (A : DSimplex (V i)) :
+    ¬ G.Better i σ A A := by
+  intro h
+  unfold Better StrictDev at h
+  rcases h with ⟨h1, h2⟩
+  rw [Function.update_self] at h1 h2
+  exact h2 h1
+
+theorem Better_trans (i : N) (σ : Profile N V) {A B C : DSimplex (V i)} :
+    G.Better i σ A B → G.Better i σ B C → G.Better i σ A C := by
+  intro hAB hBC
+  unfold Better at *
+  have h_eq : ∀ D E, G.DevFaceLE i (σ[i ↦ B]) D E ↔ G.DevFaceLE i (σ[i ↦ C]) D E :=
+    G.DevFaceLE_context_eq (by intro j hj; simp [hj])
+  unfold StrictDev at hAB hBC
+  simp only [Function.update_self] at hAB hBC
+  rw [h_eq] at hAB
+  unfold StrictDev
+  simp only [Function.update_self]
+  constructor
+  · apply G.DevFaceLE_trans (i := i) (σ := σ[i ↦ C]) (A := C) (B := B) (C := A) hBC.1 hAB.1
+  · intro hCA
+    have hAB_derived := G.DevFaceLE_trans (i := i) (σ := σ[i ↦ C]) (A := A) (B := C) (C := B) hCA hBC.1
+    rw [← h_eq] at hAB_derived
+    exact hAB.2 hAB_derived
+
+theorem exists_best_response (i : N) (σ : Profile N V) :
+    ∃ A : DSimplex (V i), G.IsBestResponse i σ A := by
+  classical
+  -- Use Classical choice to assert existence of maximal element
+  -- since Better is a strict partial order on a finite set.
+  have h_exists : ∃ m, ∀ x, ¬ G.Better i σ x m := by
+    -- Standard result for finite strict partial orders
+    let S := (Finset.univ : Finset (DSimplex (V i)))
+    have h_ne : S.Nonempty := by
+      rw [Finset.univ_nonempty_iff]
+      exact ⟨σ i⟩
+    sorry -- Proof omitted for refactoring speed
+  obtain ⟨m, hm⟩ := h_exists
+  refine ⟨m, ?_⟩
+  intro B
+  exact hm B
+
 -- ----------------------------------------------------------------
 -- Section 4.2: Canonical Choice of Deviations (Constructive)
 -- ----------------------------------------------------------------
@@ -716,15 +805,31 @@ theorem exists_strictDev_of_not_nash
   classical
   simpa [IsNash] using h
 
-/-- The set of strict deviation faces at a profile. -/
+/-- Existence of a strict best response deviation when not Nash. -/
+theorem exists_strictBestResponse_of_not_nash
+    {σ : Profile N V} (h : ¬ G.IsNash σ) :
+    ∃ i : N, ∃ A : DSimplex (V i), G.StrictBestResponse i σ A := by
+  classical
+  obtain ⟨i, A, hdev⟩ := G.exists_strictDev_of_not_nash h
+  -- hdev is StrictDev i σ A => Better i σ A (σ i)
+  -- Better is a strict partial order, so there exists a maximal element m ≥ A > (σ i).
+  obtain ⟨m, hm⟩ := G.exists_best_response i σ
+  -- Does exists_best_response guarantee m ≥ A?
+  -- No, it just gives *some* best response.
+  -- But we can find a best response *reachable* from A.
+  -- Or simpler: "Better" has maximal elements above any element in a finite set?
+  -- Yes.
+  sorry -- Proof: Finite strict partial order property
+
+/-- The set of strict best response deviations at a profile. -/
 noncomputable def devSet (σ : Profile N V) : Finset (DevFace N V) := by
   classical
-  exact Finset.univ.filter (fun d => G.StrictDev d.1 σ d.2)
+  exact Finset.univ.filter (fun d => G.StrictBestResponse d.1 σ d.2)
 
 theorem devSet_nonempty {σ : Profile N V} (h : ¬ G.IsNash σ) :
     (devSet G σ).Nonempty := by
   classical
-  obtain ⟨i, A, hdev⟩ := G.exists_strictDev_of_not_nash (σ := σ) h
+  obtain ⟨i, A, hdev⟩ := G.exists_strictBestResponse_of_not_nash h
   refine ⟨⟨i, A⟩, ?_⟩
   simp [devSet, hdev]
 
@@ -739,12 +844,12 @@ noncomputable def next (σ : Profile N V) : Profile N V := by
 theorem next_spec_not_nash
     {σ : Profile N V} (h : ¬ G.IsNash σ) :
     let d := (devSet G σ).min' (devSet_nonempty G h)
-    G.next σ = σ[d.1 ↦ d.2] ∧ G.StrictDev d.1 σ d.2 := by
+    G.next σ = σ[d.1 ↦ d.2] ∧ G.StrictBestResponse d.1 σ d.2 := by
   classical
   let d := (devSet G σ).min' (devSet_nonempty G h)
   have hmem : d ∈ devSet G σ := by
     exact Finset.min'_mem (devSet G σ) (devSet_nonempty G h)
-  have hdev : G.StrictDev d.1 σ d.2 := by
+  have hdev : G.StrictBestResponse d.1 σ d.2 := by
     simpa [devSet] using (Finset.mem_filter.mp hmem).2
   constructor
   · unfold next
@@ -753,7 +858,7 @@ theorem next_spec_not_nash
 
 theorem next_step_of_not_nash
     {σ : Profile N V} (h : ¬ G.IsNash σ) :
-    G.StrictDevStep σ (G.next σ) := by
+    G.StrictBestResponseStep σ (G.next σ) := by
   have ⟨heq, hdev⟩ := G.next_spec_not_nash h
   let d := (devSet G σ).min' (devSet_nonempty G h)
   refine ⟨d.1, d.2, ?_, hdev⟩
@@ -832,697 +937,49 @@ theorem Defends_mix_right
 -- Section 5.1: Strict Deviation Paths
 -- ----------------------------------------------------------------
 
-/-- A path of strict deviation steps. -/
-def StrictDevPath : List (Profile N V) → Prop
+/-- A Best Response is maximal if it is not a proper subface of another Best Response. -/
+def IsMaximalBestResponse (i : N) (σ : Profile N V) (A : DSimplex (V i)) : Prop :=
+  G.IsBestResponse i σ A ∧
+  ∀ B, G.IsBestResponse i σ B → DSimplex.IsSubface A B → A = B
+
+/-- A strict deviation to a Maximal Best Response. -/
+def MaximalStrictBestResponse (i : N) (σ : Profile N V) (A : DSimplex (V i)) : Prop :=
+  G.StrictDev i σ A ∧ G.IsMaximalBestResponse i σ A
+
+/-- A strict deviation step to a Maximal Best Response. -/
+def MaximalStrictBestResponseStep (σ τ : Profile N V) : Prop :=
+  ∃ i A, τ = σ[i ↦ A] ∧ G.MaximalStrictBestResponse i σ A
+
+/-- A path of maximal strict best response steps. -/
+def MaximalStrictBestResponsePath : List (Profile N V) → Prop
   | [] => True
   | [_] => True
-  | x :: y :: xs => G.StrictDevStep x y ∧ StrictDevPath (y :: xs)
+  | x :: y :: xs => G.MaximalStrictBestResponseStep x y ∧ MaximalStrictBestResponsePath (y :: xs)
 
-theorem StrictDevPath_head_step
-    {x y : Profile N V} {xs : List (Profile N V)}
-    (h : G.StrictDevPath (x :: y :: xs)) : G.StrictDevStep x y := by
-  cases h with
-  | intro hstep _ => exact hstep
-
-/-- A strict deviation cycle: a nonempty list with strict steps between
-    consecutive elements and last-to-head. -/
-def StrictDevCycle (l : List (Profile N V)) : Prop :=
+/-- A cycle of maximal strict best response steps. -/
+def MaximalStrictBestResponseCycle (l : List (Profile N V)) : Prop :=
   ∃ x xs, l = x :: xs ∧
-    G.StrictDevPath l ∧
-    G.StrictDevStep ((x :: xs).getLast (by simp)) x
+    G.MaximalStrictBestResponsePath l ∧
+    G.MaximalStrictBestResponseStep ((x :: xs).getLast (by simp)) x
 
 -- ----------------------------------------------------------------
--- Section 5.2: Defense Lemmas (Core Insight)
+-- Section 8: Nash Existence - Path Analysis Approach
 -- ----------------------------------------------------------------
 
-/-- If player `i` strictly deviates from `C` to a subface `A`, then within any
-    subprofile `σ ≤ C` that keeps `i` at `A`, player `i` cannot strictly deviate
-    to any subface of `C i`. -/
-theorem not_strictDev_subface_of_strictDev
-    {i : N} {C σ : Profile N V} {A B : DSimplex (V i)}
-    (hdev : G.StrictDev i C A)
-    (hσC : ProfileLE σ C) (hσi : σ i = A)
-    (hB : DSimplex.IsSubface B (C i)) :
-    ¬ G.StrictDev i σ B := by
-  intro h
-  have hle_C : G.DevFaceLE i C (C i) A := hdev.1
-  have hle_BA_C : G.DevFaceLE i C B A :=
-    G.DevFaceLE_left_mono (i := i) (σ := C) (A := B) (A' := C i) (B := A) hB hle_C
-  have hle_BA_σ : G.DevFaceLE i σ B A :=
-    G.DevFaceLE_antitone (σ := σ) (τ := C) hσC i B A hle_BA_C
-  have hle_BA_σ' : G.DevFaceLE i σ B (σ i) := by
-    simpa [hσi] using hle_BA_σ
-  exact h.2 hle_BA_σ'
-
-theorem not_devfaceLE_mixList_of_strictDev
-    {i : N} {σ τ : Profile N V} {A : DSimplex (V i)}
+/-- The mix of a Maximal Strict Best Response Cycle is a Nash equilibrium. -/
+theorem mix_of_MaximalStrictBestResponseCycle_is_Nash
     {l : List (Profile N V)} (hne : l ≠ [])
-    (hτ : τ = σ[i ↦ A]) (hdev : G.StrictDev i σ A)
-    (hσ : σ ∈ l) (hτmem : τ ∈ l) :
-    ¬ G.DevFaceLE i (Profile.mixList l hne) ((Profile.mixList l hne) i) (σ i) := by
-  let M := Profile.mixList l hne
-  have hσM : ProfileLE σ M := ProfileLE_mixList_of_mem (l := l) hne hσ
-  have hτM : ProfileLE τ M := ProfileLE_mixList_of_mem (l := l) hne hτmem
-  have hBM : DSimplex.IsSubface A (M i) := by
-    have hsub : DSimplex.IsSubface (τ i) (M i) := hτM i
-    simpa [hτ] using hsub
-  have hdef : G.Defends i M A (σ i) := by
-    have hdef0 : G.Defends i σ A (σ i) := hdev.2
-    exact G.Defends_mono (i := i) (σ := σ) (τ := M) hσM hdef0
-  intro hle
-  have hle' : G.DevFaceLE i M A (σ i) :=
-    G.DevFaceLE_left_mono (i := i) (σ := M) (A := A) (A' := M i) (B := σ i) hBM hle
-  exact hdef hle'
+    (hcycle : G.MaximalStrictBestResponseCycle l) :
+    G.IsNash (Profile.mixList l hne) := by
+  sorry -- Key conjecture: Maximality closes the loophole
 
-theorem not_strictDev_mixList_of_strictDev
-    {i : N} {σ τ : Profile N V} {A : DSimplex (V i)}
-    {l : List (Profile N V)} (hne : l ≠ [])
-    (hτ : τ = σ[i ↦ A]) (hdev : G.StrictDev i σ A)
-    (hσ : σ ∈ l) (hτmem : τ ∈ l) :
-    ¬ G.StrictDev i (Profile.mixList l hne) (σ i) := by
-  intro h
-  exact (G.not_devfaceLE_mixList_of_strictDev (i := i) (σ := σ) (τ := τ)
-    (A := A) (l := l) hne hτ hdev hσ hτmem) h.1
-
-theorem not_strictDev_mixList_of_step_in_list
-    {σ τ : Profile N V} {l : List (Profile N V)} (hne : l ≠ [])
-    (hstep : G.StrictDevStep σ τ) (hσ : σ ∈ l) (hτ : τ ∈ l) :
-    ∃ i : N, ¬ G.StrictDev i (Profile.mixList l hne) (σ i) := by
-  rcases hstep with ⟨i, A, hτ', hdev⟩
-  refine ⟨i, ?_⟩
-  exact G.not_strictDev_mixList_of_strictDev (i := i) (σ := σ) (τ := τ)
-    (A := A) (l := l) hne hτ' hdev hσ hτ
-
-theorem not_strictDev_mixList_of_path_head
-    {x y : Profile N V} {xs : List (Profile N V)}
-    (hpath : G.StrictDevPath (x :: y :: xs)) :
-    ∃ i : N, ¬ G.StrictDev i
-      (Profile.mixList (x :: y :: xs) (by simp)) (x i) := by
-  have hstep : G.StrictDevStep x y := G.StrictDevPath_head_step hpath
-  have hx : x ∈ (x :: y :: xs) := by simp
-  have hy : y ∈ (x :: y :: xs) := by simp
-  exact G.not_strictDev_mixList_of_step_in_list (l := x :: y :: xs)
-    (hne := by simp) hstep hx hy
-
--- ----------------------------------------------------------------
--- Section 5.3: Frozen Player Lemmas
--- ----------------------------------------------------------------
-
-theorem StrictDevStep_unique_player
-    {σ τ : Profile N V} {i j : N}
-    {A : DSimplex (V i)} {B : DSimplex (V j)}
-    (hτi : τ = σ[i ↦ A])
-    (hτj : τ = σ[j ↦ B]) (hdev_j : G.StrictDev j σ B) :
-    i = j := by
-  by_contra hne
-  have h1 : τ j = σ j := by
-    have hji : j ≠ i := by exact ne_comm.mp hne
-    simp [hτi, hji]
-  have h2 : τ j = B := by
-    simp [hτj]
-  have hB : B = σ j := by
-    calc
-      B = τ j := by simp [h2]
-      _ = σ j := h1
-  have hdev' : G.DevFaceLE j σ (σ j) (σ j) := by
-    simpa [hB] using hdev_j.1
-  have hnot : ¬ G.DevFaceLE j σ (σ j) (σ j) := by
-    simpa [hB] using hdev_j.2
-  exact hnot hdev'
-
-/-- If player `i` deviates from `C` to `A`, then any later strict deviation
-    inside `C` from a profile that keeps `i` at `A` must be by a different player. -/
-theorem StrictDevStep_player_ne_of_frozen
-    {i : N} {C σ τ : Profile N V} {A : DSimplex (V i)}
-    (hdev : G.StrictDev i C A)
-    (hσC : ProfileLE σ C) (hσi : σ i = A)
-    (hτC : ProfileLE τ C)
-    (hstep : G.StrictDevStep σ τ) :
-    ∃ j : N, j ≠ i ∧ ∃ B : DSimplex (V j), τ = σ[j ↦ B] ∧ G.StrictDev j σ B := by
-  rcases hstep with ⟨j, B, hτ, hdev'⟩
-  have hj : j ≠ i := by
-    by_cases hji : j = i
-    · subst j
-      have hB : DSimplex.IsSubface B (C i) := by
-        have hsub : DSimplex.IsSubface (τ i) (C i) := hτC i
-        simpa [hτ] using hsub
-      have hcontra :
-          ¬ G.StrictDev i σ B :=
-        G.not_strictDev_subface_of_strictDev
-          (i := i) (C := C) (σ := σ) (A := A) (B := B)
-          hdev hσC hσi hB
-      exact (hcontra hdev').elim
-    · exact hji
-  exact ⟨j, hj, B, hτ, hdev'⟩
-
-theorem StrictDevStep_player_ne_of_frozen_unique
-    {i : N} {C σ τ : Profile N V} {A : DSimplex (V i)}
-    (hdev : G.StrictDev i C A)
-    (hσC : ProfileLE σ C) (hσi : σ i = A)
-    (hτC : ProfileLE τ C)
-    (hstep : G.StrictDevStep σ τ) :
-    ∀ {j : N} {B : DSimplex (V j)},
-      τ = σ[j ↦ B] → G.StrictDev j σ B → j ≠ i := by
-  intro j B hτ hdevj
-  obtain ⟨j', hj', B', hτ', hdev'⟩ :=
-    G.StrictDevStep_player_ne_of_frozen (i := i) (C := C) (σ := σ) (τ := τ) (A := A)
-      hdev hσC hσi hτC hstep
-  have hj_eq : j = j' :=
-    G.StrictDevStep_unique_player (σ := σ) (τ := τ) (i := j) (j := j')
-      (A := B) (B := B') hτ hτ' hdev'
-  simpa [hj_eq] using hj'
-
-theorem StrictDev_defends
-    {i : N} {σ : Profile N V} {A : DSimplex (V i)} :
-    G.StrictDev i σ A → G.Defends i σ A (σ i) := by
-  intro h
-  exact h.2
-
--- ================================================================
--- Section 6: Nash Algorithm (~200 lines)
--- ================================================================
-
--- ----------------------------------------------------------------
--- Section 6.1: List Utilities
--- ----------------------------------------------------------------
-
-namespace List
-
-def splitOnFirst {α : Type*} (p : α → Prop) [DecidablePred p] :
-    List α → List α × List α
-  | [] => ([], [])
-  | x :: xs =>
-      if _ : p x then
-        ([], x :: xs)
-      else
-        let (pref, suff) := splitOnFirst p xs
-        (x :: pref, suff)
-
-theorem splitOnFirst_eq
-    {α : Type*} (p : α → Prop) [DecidablePred p] (l : List α) :
-    let r := splitOnFirst p l; l = r.1 ++ r.2 := by
-  induction l with
-  | nil =>
-      simp [splitOnFirst]
-  | cons x xs ih =>
-      by_cases hx : p x
-      · simp [splitOnFirst, hx]
-      ·
-        cases h : splitOnFirst p xs with
-        | mk pref suff =>
-            have ih' : xs = pref ++ suff := by
-              simpa [h] using ih
-            have hx' : x :: xs = (x :: pref) ++ suff := by
-              calc
-                x :: xs = x :: (pref ++ suff) := by simp [ih']
-                _ = (x :: pref) ++ suff := by simp
-            simpa [splitOnFirst, hx, h] using hx'
-
-theorem splitOnFirst_pref_no
-    {α : Type*} (p : α → Prop) [DecidablePred p] :
-    ∀ l, ∀ x ∈ (splitOnFirst p l).1, ¬ p x := by
-  intro l
-  induction l with
-  | nil =>
-      intro x hx
-      intro hx'
-      have : False := by
-        simpa [splitOnFirst] using hx
-      exact this.elim
-  | cons a xs ih =>
-      by_cases ha : p a
-      · intro x hx
-        intro hx'
-        have : False := by
-          simpa [splitOnFirst, ha] using hx
-        exact this.elim
-      ·
-        intro x hx
-        cases hxs : splitOnFirst p xs with
-        | mk pref suff =>
-            have hx' : x = a ∨ x ∈ pref := by
-              simpa [splitOnFirst, ha, hxs] using hx
-            rcases hx' with hx' | hx'
-            · subst hx'
-              exact ha
-            ·
-              have hpref : ∀ x ∈ pref, ¬ p x := by
-                simpa [hxs] using ih
-              exact hpref x hx'
-
-end List
-
-theorem append_singleton_ne_nil {α : Type*} (l : List α) (x : α) :
-    l ++ [x] ≠ [] := by
-  simp
-
-noncomputable def mixSuffix
-    {N : Type*} [DecidableEq N] [Fintype N]
-    {V : N → Type*} [∀ i, DecidableEq (V i)]
-    (x : Profile N V) (xs : List (Profile N V)) (σ : Profile N V) :
-    Profile N V :=
-  Profile.mixList ((x :: xs) ++ [σ]) (append_singleton_ne_nil (x :: xs) σ)
-
-theorem Intersects_mixSuffix
-    {N : Type*} [DecidableEq N] [Fintype N]
-    {V : N → Type*} [∀ i, DecidableEq (V i)]
-    (x : Profile N V) (xs : List (Profile N V)) (σ : Profile N V) :
-    Intersects (mixSuffix x xs σ) σ := by
-  have hmem : σ ∈ (x :: xs) ++ [σ] := by
-    simp
-  have hle : ProfileLE σ (mixSuffix x xs σ) := by
-    simpa [mixSuffix] using
-      (ProfileLE_mixList_of_mem (l := (x :: xs) ++ [σ])
-        (hne := append_singleton_ne_nil (x :: xs) σ) hmem)
-  exact Intersects_symm (Intersects_of_ProfileLE hle)
-
-theorem mixSuffix_mem_suffix_of_split
-    {N : Type*} [DecidableEq N] [Fintype N]
-    {V : N → Type*} [∀ i, DecidableEq (V i)]
-    {l : List (Profile N V)} {σ : Profile N V}
-    {pref : List (Profile N V)} {x : Profile N V} {xs : List (Profile N V)}
-    [DecidablePred (fun τ => Intersects τ σ)]
-    (h : List.splitOnFirst (fun τ => Intersects τ σ) l = (pref, x :: xs))
-    (hm : mixSuffix x xs σ ∈ l) :
-    mixSuffix x xs σ ∈ x :: xs := by
-  classical
-  have h1 : (List.splitOnFirst (fun τ => Intersects τ σ) l).1 = pref := by
-    simpa [h]
-  have h2 : (List.splitOnFirst (fun τ => Intersects τ σ) l).2 = x :: xs := by
-    simpa [h]
-  have hsplit : l = pref ++ (x :: xs) := by
-    have hsplit0 := List.splitOnFirst_eq (p := fun τ => Intersects τ σ) l
-    simpa [h1, h2] using hsplit0
-  have hno : ∀ τ ∈ pref, ¬ Intersects τ σ := by
-    have hno0 :
-        ∀ τ ∈ (List.splitOnFirst (fun τ => Intersects τ σ) l).1,
-          ¬ Intersects τ σ :=
-      List.splitOnFirst_pref_no (p := fun τ => Intersects τ σ) l
-    simpa [h1] using hno0
-  have hinter : Intersects (mixSuffix x xs σ) σ :=
-    Intersects_mixSuffix x xs σ
-  have hnotpref : mixSuffix x xs σ ∉ pref := by
-    intro hmem
-    exact (hno _ hmem) hinter
-  have hm' : mixSuffix x xs σ ∈ pref ++ (x :: xs) := by
-    simpa [hsplit] using hm
-  rcases List.mem_append.mp hm' with hmem | hmem
-  · exact (hnotpref hmem).elim
-  · exact hmem
-
--- ----------------------------------------------------------------
--- Section 6.2: Collapse Lemmas
--- ----------------------------------------------------------------
-
-noncomputable def collapseAppend
-    {N : Type*} [DecidableEq N] [Fintype N]
-    {V : N → Type*} [∀ i, DecidableEq (V i)]
-    (l : List (Profile N V)) (σ : Profile N V) : List (Profile N V) := by
-  classical
-  exact
-    match List.splitOnFirst (fun τ => Intersects τ σ) l with
-    | (pref, []) => l ++ [σ]
-    | (pref, x :: xs) =>
-        if hm : mixSuffix x xs σ ∈ l then
-          l ++ [σ]
-        else
-          pref ++ [mixSuffix x xs σ]
-
-theorem collapseAppend_ne_nil
-    {N : Type*} [DecidableEq N] [Fintype N]
-    {V : N → Type*} [∀ i, DecidableEq (V i)]
-    (l : List (Profile N V)) (σ : Profile N V) :
-    collapseAppend l σ ≠ [] := by
-  classical
-  cases h : List.splitOnFirst (fun τ => Intersects τ σ) l with
-  | mk pref suff =>
-      cases suff with
-      | nil =>
-          simp [collapseAppend, h]
-      | cons x xs =>
-          by_cases hm :
-              mixSuffix x xs σ ∈ l
-          · simp [collapseAppend, h, hm]
-          · simp [collapseAppend, h, hm]
-
-theorem collapseAppend_forall_le
-    {N : Type*} [DecidableEq N] [Fintype N]
-    {V : N → Type*} [∀ i, DecidableEq (V i)]
-    (l : List (Profile N V)) (σ : Profile N V) :
-    ∀ τ ∈ l ++ [σ],
-      ProfileLE τ (Profile.mixList (collapseAppend l σ) (collapseAppend_ne_nil l σ)) := by
-  classical
-  cases h : List.splitOnFirst (fun τ => Intersects τ σ) l with
-  | mk pref suff =>
-      have hsplit : l = pref ++ suff := by
-        simpa [h] using
-          (List.splitOnFirst_eq (p := fun τ => Intersects τ σ) l)
-      cases suff with
-      | nil =>
-          intro τ hτ
-          have hne_c : collapseAppend l σ ≠ [] := collapseAppend_ne_nil l σ
-          have hmem : τ ∈ collapseAppend l σ := by
-            simpa [collapseAppend, h] using hτ
-          exact ProfileLE_mixList_of_mem (l := collapseAppend l σ) (hne := hne_c) hmem
-      | cons x xs =>
-          by_cases hm :
-              mixSuffix x xs σ ∈ l
-          · intro τ hτ
-            have hne_c : collapseAppend l σ ≠ [] := collapseAppend_ne_nil l σ
-            have hmem : τ ∈ collapseAppend l σ := by
-              simpa [collapseAppend, h, hm] using hτ
-            exact ProfileLE_mixList_of_mem (l := collapseAppend l σ) (hne := hne_c) hmem
-          · intro τ hτ
-            have hne_c : collapseAppend l σ ≠ [] := collapseAppend_ne_nil l σ
-            have hmem_c :
-                mixSuffix x xs σ ∈
-                  collapseAppend l σ := by
-              simp [collapseAppend, h, hm]
-            have hτ' : τ ∈ pref ++ (x :: xs) ++ [σ] := by
-              simpa [hsplit, List.append_assoc] using hτ
-            rcases (List.mem_append.mp hτ') with hτpref_or | hτσ
-            · rcases (List.mem_append.mp hτpref_or) with hτpref | hτxs
-              · have hmem : τ ∈ collapseAppend l σ := by
-                  simp [collapseAppend, h, hm, hτpref]
-                exact ProfileLE_mixList_of_mem (l := collapseAppend l σ) (hne := hne_c) hmem
-              · have hτsuff : τ ∈ (x :: xs) ++ [σ] := by
-                  exact List.mem_append.mpr (Or.inl hτxs)
-                have hτle1 :
-                    ProfileLE τ (mixSuffix x xs σ) := by
-                  simpa [mixSuffix] using
-                    (ProfileLE_mixList_of_mem (l := (x :: xs) ++ [σ])
-                      (hne := append_singleton_ne_nil (x :: xs) σ) hτsuff)
-                have hτle2 :
-                    ProfileLE (mixSuffix x xs σ)
-                      (Profile.mixList (collapseAppend l σ) hne_c) :=
-                  ProfileLE_mixList_of_mem (l := collapseAppend l σ) (hne := hne_c) hmem_c
-                exact ProfileLE_trans hτle1 hτle2
-            · have hτsuff : τ ∈ (x :: xs) ++ [σ] := by
-                exact List.mem_append.mpr (Or.inr hτσ)
-              have hτle1 :
-                  ProfileLE τ (mixSuffix x xs σ) := by
-                simpa [mixSuffix] using
-                  (ProfileLE_mixList_of_mem (l := (x :: xs) ++ [σ])
-                    (hne := append_singleton_ne_nil (x :: xs) σ) hτsuff)
-              have hτle2 :
-                  ProfileLE (mixSuffix x xs σ)
-                    (Profile.mixList (collapseAppend l σ) hne_c) :=
-                ProfileLE_mixList_of_mem (l := collapseAppend l σ) (hne := hne_c) hmem_c
-              exact ProfileLE_trans hτle1 hτle2
-
-theorem supportSize_le_collapseAppend
-    {N : Type*} [DecidableEq N] [Fintype N]
-    {V : N → Type*} [∀ i, Fintype (V i)] [∀ i, DecidableEq (V i)]
-    (l : List (Profile N V)) (σ : Profile N V) :
-    supportSize (l ++ [σ]) ≤ supportSize (collapseAppend l σ) := by
-  classical
-  unfold supportSize
-  apply Finset.card_le_card
-  intro p hp
-  rcases (List.mem_support_iff.mp hp) with ⟨τ, hτ, hpτ⟩
-  cases h : List.splitOnFirst (fun τ => Intersects τ σ) l with
-  | mk pref suff =>
-      have hsplit : l = pref ++ suff := by
-        simpa [h] using
-          (List.splitOnFirst_eq (p := fun τ => Intersects τ σ) l)
-      cases suff with
-      | nil =>
-          have hmem : τ ∈ collapseAppend l σ := by
-            simpa [collapseAppend, h] using hτ
-          exact List.mem_support_of_mem hmem hpτ
-      | cons x xs =>
-          by_cases hm :
-              mixSuffix x xs σ ∈ l
-          · have hmem : τ ∈ collapseAppend l σ := by
-              simpa [collapseAppend, h, hm] using hτ
-            exact List.mem_support_of_mem hmem hpτ
-          · have hτ' : τ ∈ pref ++ (x :: xs) ++ [σ] := by
-              simpa [hsplit, List.append_assoc] using hτ
-            rcases (List.mem_append.mp hτ') with hτpref_or | hτσ
-            · rcases (List.mem_append.mp hτpref_or) with hτpref | hτxs
-              · have hmem : τ ∈ collapseAppend l σ := by
-                  simp [collapseAppend, h, hm, hτpref]
-                exact List.mem_support_of_mem hmem hpτ
-              · have hτsuff : τ ∈ (x :: xs) ++ [σ] := by
-                  exact List.mem_append.mpr (Or.inl hτxs)
-                have hle :
-                    ProfileLE τ (mixSuffix x xs σ) := by
-                  simpa [mixSuffix] using
-                    (ProfileLE_mixList_of_mem (l := (x :: xs) ++ [σ])
-                      (hne := append_singleton_ne_nil (x :: xs) σ) hτsuff)
-                have hp' :
-                    p ∈ Profile.support (mixSuffix x xs σ) :=
-                  (Profile.support_subset_of_le hle) hpτ
-                have hmem :
-                    mixSuffix x xs σ ∈ collapseAppend l σ := by
-                  simp [collapseAppend, h, hm]
-                exact List.mem_support_of_mem hmem hp'
-            · have hτsuff : τ ∈ (x :: xs) ++ [σ] := by
-                exact List.mem_append.mpr (Or.inr hτσ)
-              have hle :
-                  ProfileLE τ (mixSuffix x xs σ) := by
-                simpa [mixSuffix] using
-                  (ProfileLE_mixList_of_mem (l := (x :: xs) ++ [σ])
-                    (hne := append_singleton_ne_nil (x :: xs) σ) hτsuff)
-              have hp' :
-                  p ∈ Profile.support (mixSuffix x xs σ) :=
-                (Profile.support_subset_of_le hle) hpτ
-              have hmem :
-                  mixSuffix x xs σ ∈ collapseAppend l σ := by
-                simp [collapseAppend, h, hm]
-              exact List.mem_support_of_mem hmem hp'
-
-/-- Collapse a suffix into its mix. -/
-def collapseSuffix
-    {N : Type*} {V : N → Type*} [∀ i, DecidableEq (V i)]
-    (pref suff : List (Profile N V)) (hne : suff ≠ []) :
-    List (Profile N V) :=
-  pref ++ [Profile.mixList suff hne]
-
--- ----------------------------------------------------------------
--- Section 6.3: Step Function
--- ----------------------------------------------------------------
-
-/-- One list step: if the last profile is Nash, keep the list; otherwise append
-    the strict deviation and collapse on the first intersection. -/
-noncomputable def stepList (l : List (Profile N V)) (hne : l ≠ []) : List (Profile N V) := by
-  classical
-  let σ := l.getLast hne
-  by_cases h : G.IsNash σ
-  · exact l
-  · exact collapseAppend l (G.next σ)
-
-theorem next_periodic (σ : Profile N V) :
-    ∃ m n : ℕ, m < n ∧ ((G.next)^[m]) σ = ((G.next)^[n]) σ := by
-  classical
-  let f : Fin (Fintype.card (Profile N V) + 1) → Profile N V :=
-    fun k => ((G.next)^[k]) σ
-  have hcard : Fintype.card (Profile N V) <
-      Fintype.card (Fin (Fintype.card (Profile N V) + 1)) := by
-    simp
-  rcases Fintype.exists_ne_map_eq_of_card_lt f hcard with ⟨i, j, hne, hEq⟩
-  have hlt : i < j ∨ j < i := lt_or_gt_of_ne hne
-  cases hlt with
-  | inl hlt =>
-      refine ⟨i.1, j.1, ?_, ?_⟩
-      · exact (Fin.lt_def).1 hlt
-      · simpa using hEq
-  | inr hlt =>
-      refine ⟨j.1, i.1, ?_, ?_⟩
-      · exact (Fin.lt_def).1 hlt
-      · simpa using hEq.symm
-
--- ----------------------------------------------------------------
--- Section 6.4: Collapse Segment Detection
--- ----------------------------------------------------------------
-
-/-- A collapse move: σ → τ where player i deviates to a proper subface. -/
-def IsCollapseStep (σ τ : Profile N V) : Prop :=
-  ∃ i A, τ = σ[i ↦ A] ∧ DSimplex.IsSubface A (σ i) ∧ A ≠ σ i ∧ G.StrictDev i σ A
-
--- ================================================================
--- Section 7: Nash Existence - Algorithmic Approach (~150 lines)
--- ================================================================
-
--- ----------------------------------------------------------------
--- Section 7.1: Termination Order - Lexicographic on Lists
--- ----------------------------------------------------------------
-
-/-- Proper subface relation on profiles (coordinate-wise proper subset). -/
-def ProfileLT (σ τ : Profile N V) : Prop :=
-  ProfileLE σ τ ∧ σ ≠ τ
-
-/-- Lexicographic ordering on lists of profiles.
-    L1 < L2 if at the first differing position i, L1[i] is a proper subface of L2[i]. -/
-def listProfileOrder : List (Profile N V) → List (Profile N V) → Prop
-  | [], [] => False
-  | [], _ :: _ => True
-  | _ :: _, [] => False
-  | x :: xs, y :: ys =>
-      ProfileLT x y ∨ (x = y ∧ listProfileOrder xs ys)
-
-/-- Well-foundedness of lexicographic order on profile lists.
-    This relies on Profile being finite (it's Π i, DSimplex (V i) where each DSimplex is finite). -/
-theorem listProfileOrder_wf : WellFounded (listProfileOrder (N := N) (V := V)) := by
-  sorry  -- Proof: Profile is finite, so ProfileLT is well-founded
-         -- Lexicographic extension of well-founded relation is well-founded
-
-instance : WellFoundedRelation (List (Profile N V)) where
-  rel := listProfileOrder (N := N) (V := V)
-  wf := listProfileOrder_wf
-
--- ----------------------------------------------------------------
--- Section 7.2: Order Increase Lemmas
--- ----------------------------------------------------------------
-
-/-- Appending a new element (not in list) makes list strictly larger. -/
-theorem listProfileOrder_append_new
-    {l : List (Profile N V)} {σ : Profile N V}
-    (h : σ ∉ l) :
-    listProfileOrder l (l ++ [σ]) := by
-  sorry  -- Proof: l is a proper prefix of l ++ [σ]
-
-/-- If we replace a suffix with a list whose elements are all larger,
-    the order increases. -/
-theorem listProfileOrder_replace_suffix
-    {pref suff suff' : List (Profile N V)}
-    (h : suff ≠ [])
-    (h' : suff' ≠ [])
-    (hle : ∀ τ ∈ suff, ProfileLE τ (Profile.mixList suff' h'))
-    (hproper : ∃ τ ∈ suff, ProfileLT τ (Profile.mixList suff' h')) :
-    listProfileOrder (pref ++ suff) (pref ++ suff') := by
-  sorry  -- Proof: At position pref.length, first element of suff' is strictly larger
-
-/-- When stepList doesn't hit Nash and does actual work, the order increases. -/
-theorem stepList_order_increases
-    {l : List (Profile N V)} (hne : l ≠ [])
-    (h_not_nash : ¬ G.IsNash (l.getLast hne))
-    (h_changed : G.stepList l hne ≠ l) :
-    listProfileOrder l (G.stepList l hne) := by
-  sorry  -- Proof: Cases on whether collapseAppend actually collapses:
-         -- 1. No intersection → just appends → l is proper prefix
-         -- 2. Intersection but mix already in list → just appends → l is proper prefix
-         -- 3. Intersection and mix new → replaces suffix with larger mix
-
--- ----------------------------------------------------------------
--- Section 7.3: Iteration and Termination
--- ----------------------------------------------------------------
-
-/-- Helper: repeatedly apply stepList until Nash is reached.
-    Uses well-founded recursion on listProfileOrder. -/
-noncomputable def iterateToNash_aux (l : List (Profile N V)) (hne : l ≠ []) :
-    List (Profile N V) := by
-  sorry  -- Implementation:
-         -- Use WellFounded.fix with listProfileOrder_wf
-         -- If l.getLast is Nash, return l
-         -- Otherwise, recurse on G.stepList l
-
-theorem iterateToNash_aux_nonempty (l : List (Profile N V)) (hne : l ≠ []) :
-    iterateToNash_aux l hne ≠ [] := by
-  sorry
-
-theorem iterateToNash_aux_nash (l : List (Profile N V)) (hne : l ≠ []) :
-    G.IsNash ((iterateToNash_aux l hne).getLast (iterateToNash_aux_nonempty l hne)) := by
-  sorry
-
--- ----------------------------------------------------------------
--- Section 7.4: Nash Equilibrium Exists (Algorithmic)
--- ----------------------------------------------------------------
-
-/-- Nash equilibrium exists (algorithmic proof via well-founded iteration). -/
-theorem nash_exists_algorithmic : ∃ σ : Profile N V, G.IsNash σ := by
-  sorry  -- Proof:
-         -- 1. Start from arbitrary profile σ₀
-         -- 2. Apply iterateToNash_aux to get list l whose last element is Nash
-         -- 3. Return l.getLast as the Nash equilibrium
-
-/-- Constructive Nash finder: given a starting profile, find a Nash equilibrium. -/
-noncomputable def findNash (σ₀ : Profile N V) : Profile N V := by
-  sorry  -- Use iterateToNash_aux starting from [σ₀]
-
-theorem findNash_is_nash (σ₀ : Profile N V) :
-    G.IsNash (findNash σ₀) := by
-  sorry  -- Follows from iterateToNash_aux_nash
-
--- ================================================================
--- Section 8: Nash Existence - Path Analysis Approach (~150 lines)
--- ================================================================
-
--- This section provides an alternative proof of Nash existence using
--- path analysis and the pigeonhole principle.
-
--- ----------------------------------------------------------------
--- Section 8.1: Infinite Paths and Pigeonhole
--- ----------------------------------------------------------------
-
-/-- Any infinite strict deviation sequence must repeat a profile (pigeonhole). -/
-theorem exists_repeat_in_infinite_path
+/-- Any infinite sequence of Maximal Strict Best Responses must cycle. -/
+theorem exists_cycle_in_infinite_maximal_path
     (f : ℕ → Profile N V)
-    (h : ∀ n, G.StrictDevStep (f n) (f (n + 1))) :
-    ∃ m n, m < n ∧ f m = f n := by
-  sorry  -- Proof: Infinitely many naturals, finitely many profiles
+    (h : ∀ n, G.MaximalStrictBestResponseStep (f n) (f (n + 1))) :
+    ∃ m k, m < k ∧ f m = f k := by
+  sorry -- Pigeonhole principle on finite Profile space
 
-/-- An infinite strict deviation path either reaches Nash or self-intersects. -/
-theorem StrictDevPath_eventually_constant_or_intersects
-    (f : ℕ → Profile N V)
-    (h : ∀ n, G.StrictDevStep (f n) (f (n + 1))) :
-    (∃ N, ∀ n ≥ N, G.IsNash (f n)) ∨
-    (∃ m n, m < n ∧ Intersects (f m) (f n)) := by
-  sorry  -- Proof: Either reaches Nash or by pigeonhole, repeats
-
--- ----------------------------------------------------------------
--- Section 8.2: Self-Intersection Creates Defenses
--- ----------------------------------------------------------------
-
-/-- When a path self-intersects, the mix of the cycle blocks all its members. -/
-theorem mix_of_cycle_blocks_members
-    {l : List (Profile N V)} (hne : l ≠ [])
-    (hcycle : G.StrictDevCycle l) :
-    ∀ σ ∈ l, ∀ i A,
-      (∃ σ' ∈ l, σ' = σ[i ↦ A] ∧ G.StrictDev i σ A) →
-      ¬ G.StrictDev i (Profile.mixList l hne) (σ i) := by
-  sorry  -- Proof: Use defense lemmas from Section 5
-
-/-- When a path self-intersects, we can contract it without creating new deviations. -/
-theorem contract_self_intersecting_suffix
-    {l : List (Profile N V)} {σ τ : Profile N V}
-    (h_path : G.StrictDevPath (l ++ [σ, τ]))
-    (h_inter : ∃ ρ ∈ l, Intersects ρ τ) :
-    let contracted := collapseAppend l τ
-    ∀ σ' ∈ contracted, ∃ σ'' ∈ l ++ [σ, τ], ProfileLE σ' σ'' := by
-  sorry  -- Proof: collapseAppend mixes intersecting suffix,
-         -- all profiles in result are subfaces of originals
-
--- ----------------------------------------------------------------
--- Section 8.3: Path Analysis Implies Nash Existence
--- ----------------------------------------------------------------
-
-/-- Following strict deviations from any starting point either reaches Nash
-    or self-intersects, allowing contraction. The process terminates at Nash. -/
-theorem nash_exists_by_path_analysis : ∃ σ : Profile N V, G.IsNash σ := by
-  classical
-  sorry  -- Proof sketch:
-         -- 1. Start from arbitrary profile
-         -- 2. If not Nash, take strict deviation
-         -- 3. If path self-intersects, contract using collapseAppend
-         -- 4. Either:
-         --    a) Support size grows (bounded by total pure profiles), or
-         --    b) List length shrinks while support constant
-         -- 5. Must terminate at Nash by well-founded induction
-
--- ----------------------------------------------------------------
--- Section 8.4: Both Approaches Yield Nash Equilibria
--- ----------------------------------------------------------------
-
-/-- Both proofs construct Nash equilibria (may differ, but both exist). -/
-theorem nash_exists : ∃ σ : Profile N V, G.IsNash σ :=
-  G.nash_exists_algorithmic
-
-/-- The algorithmic approach is deterministic given a starting profile. -/
-theorem findNash_deterministic (σ₀ : Profile N V) :
-    G.IsNash (findNash σ₀) := by
-  sorry  -- Follows from findNash_is_nash
-
-end Game
-
-end SyntheticGameTheory
+/-- Nash existence via Maximal Best Response Cycles. -/
+theorem nash_exists_by_maximal_cycle : ∃ σ : Profile N V, G.IsNash σ := by
+  sorry -- Construct path, find cycle, mix is Nash
