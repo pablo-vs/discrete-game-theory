@@ -188,8 +188,8 @@ theorem ProfileLE_update_left
 -- ================================================================
 
 /-- A game: N players, V i actions for player i, payoffs on pure profiles. -/
-structure Game (N : Type*) [DecidableEq N] [Fintype N]
-    (V : N → Type*) [∀ i, DecidableEq (V i)] [∀ i, Fintype (V i)] where
+structure Game (N : Type*) [DecidableEq N]
+    (V : N → Type*) [∀ i, DecidableEq (V i)] where
   /-- Player `i`'s preference preorder on pure profiles. -/
   pref : N → PureProfile N V → PureProfile N V → Prop
   /-- Each player's preference is a preorder on pure profiles. -/
@@ -247,6 +247,7 @@ def RestrictingStrictDev (i : N) (σ : Profile N V) (A : DSimplex (V i)) : Prop 
 -- Section 4.2: DevFaceLE Properties
 -- ----------------------------------------------------------------
 
+omit [Fintype N] [∀ i, Fintype (V i)] in
 /-- `DevFaceLE` is transitive. -/
 theorem DevFaceLE_trans (i : N) (σ : Profile N V) (A B C : DSimplex (V i)) :
     G.DevFaceLE i σ A B → G.DevFaceLE i σ B C → G.DevFaceLE i σ A C := by
@@ -271,6 +272,7 @@ theorem DevFaceLE_trans (i : N) (σ : Profile N V) (A B C : DSimplex (V i)) :
   have : IsTrans (PureProfile N V) (G.pref i) := G.pref_preorder i |>.toIsTrans
   exact this.trans p q r hpq hqr
 
+omit [Fintype N] [∀ i, Fintype (V i)] in
 /-- `DevFaceLE` context equivalence. -/
 theorem DevFaceLE_context_eq {i : N} {σ τ : Profile N V}
     (h : ∀ j, j ≠ i → σ j = τ j) :
@@ -295,6 +297,7 @@ theorem DevFaceLE_context_eq {i : N} {σ τ : Profile N V}
     have hq' : Consistent (τ[i ↦ B]) q := by rw [← h_cons]; exact hq
     exact H p hp' q hq'
 
+omit [Fintype N] [∀ i, Fintype (V i)] in
 /-- `DevFaceLE` is antitone in the profile argument. -/
 theorem DevFaceLE_antitone
     {σ τ : Profile N V} (h : ProfileLE σ τ)
@@ -309,6 +312,7 @@ theorem DevFaceLE_antitone
     exact hq
   exact hdev p hσA q hσB
 
+omit [Fintype N] [∀ i, Fintype (V i)] in
 /-- `DevFaceLE` is monotone in the left face. -/
 theorem DevFaceLE_left_mono
     {i : N} {σ : Profile N V} {A A' B : DSimplex (V i)}
@@ -320,6 +324,7 @@ theorem DevFaceLE_left_mono
     exact hp
   exact hle p hp' q hq
 
+omit [Fintype N] [∀ i, Fintype (V i)] in
 /-- `DevFaceLE` is monotone in the right face. -/
 theorem DevFaceLE_right_mono
     {i : N} {σ : Profile N V} {A B B' : DSimplex (V i)}
@@ -339,6 +344,7 @@ theorem DevFaceLE_right_mono
 def Better (i : N) (σ : Profile N V) (A B : DSimplex (V i)) : Prop :=
   G.StrictDev i (σ[i ↦ B]) A
 
+omit [Fintype N] [∀ i, Fintype (V i)] in
 theorem Better_irref (i : N) (σ : Profile N V) (A : DSimplex (V i)) :
     ¬ G.Better i σ A A := by
   intro h
@@ -347,6 +353,7 @@ theorem Better_irref (i : N) (σ : Profile N V) (A : DSimplex (V i)) :
   rw [Function.update_self] at h1 h2
   exact h2 h1
 
+omit [Fintype N] [∀ i, Fintype (V i)] in
 theorem Better_trans (i : N) (σ : Profile N V) {A B C : DSimplex (V i)} :
     G.Better i σ A B → G.Better i σ B C → G.Better i σ A C := by
   intro hAB hBC
@@ -365,6 +372,7 @@ theorem Better_trans (i : N) (σ : Profile N V) {A B C : DSimplex (V i)} :
     rw [← h_eq] at hAB_derived
     exact hAB.2 hAB_derived
 
+omit [Fintype N] in
 theorem exists_best_response (i : N) (σ : Profile N V) :
     ∃ A : DSimplex (V i), G.IsBestResponse i σ A := by
   classical
@@ -380,6 +388,7 @@ theorem exists_best_response (i : N) (σ : Profile N V) :
   intro B
   exact hm B
 
+omit [Fintype N] [∀ i, Fintype (V i)] in
 /-- Existence of a strict deviation when not Nash (classical). -/
 theorem exists_strictDev_of_not_nash
     {σ : Profile N V} (h : ¬ G.IsNash σ) :
@@ -391,12 +400,14 @@ theorem exists_strictDev_of_not_nash
 -- Section 4.4: Invariant Results
 -- ----------------------------------------------------------------
 
+omit [Fintype N] in
 /-- The maximal profile trivially satisfies OutsideDominated. -/
 theorem OutsideDominated_maximal [∀ i, Nonempty (V i)] (i : N) :
     G.OutsideDominated i (fun _ => ⟨Finset.univ, Finset.univ_nonempty⟩) := by
   intro v hv
   exact absurd (Finset.mem_univ v) hv
 
+omit [Fintype N] [∀ i, Fintype (V i)] in
 /-- OutsideDominated is preserved under restricting steps. -/
 theorem OutsideDominated_preserved
     {σ : Profile N V} {i : N} {A : DSimplex (V i)}
@@ -436,6 +447,7 @@ theorem OutsideDominated_preserved
       h_inv j v hv w hw
     exact G.DevFaceLE_antitone hle j _ _ h1
 
+omit [Fintype N] [∀ i, Fintype (V i)] in
 /-- When OutsideDominated holds and ¬DevFaceLE i σ A (σ i), the witness
     pure profile has p i ∈ (σ i).1. -/
 private theorem outsideDominated_neg_witness_mem
@@ -473,6 +485,7 @@ private theorem outsideDominated_neg_witness_mem
         · simp [hki]; have := hq k; simp [hki] at this; exact this
     exact h_not_pref h_pref
 
+omit [Fintype N] [∀ i, Fintype (V i)] in
 /-- When not Nash and OutsideDominated holds, there exists a restricting strict deviation. -/
 theorem exists_restrictingStrictDev_of_not_nash_with_outsideDom
     {σ : Profile N V}
@@ -521,6 +534,7 @@ theorem exists_restrictingStrictDev_of_not_nash_with_outsideDom
 def profileSize (σ : Profile N V) : ℕ :=
   Finset.univ.sum (fun i => (σ i).1.card)
 
+omit [∀ i, Fintype (V i)] in
 /-- Profile size strictly decreases when replacing a face with a proper subface. -/
 theorem profileSize_decreases_of_restricting
     {i : N} {σ : Profile N V} {A : DSimplex (V i)}
@@ -559,6 +573,7 @@ theorem profileSize_decreases_of_restricting
 noncomputable def maximalProfile [∀ i, Nonempty (V i)] : Profile N V :=
   fun _ => ⟨Finset.univ, Finset.univ_nonempty⟩
 
+omit [∀ i, Fintype (V i)] in
 /-- Nash existence by well-founded descent with threaded invariant. -/
 private theorem nash_exists_aux (σ : Profile N V)
     (h_inv : ∀ i, G.OutsideDominated i σ) :
