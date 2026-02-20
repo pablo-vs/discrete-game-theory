@@ -213,9 +213,13 @@ variable (G : Game N V)
 -- Section 4.1: Core Definitions
 -- ----------------------------------------------------------------
 
-/-- Face order on deviations in player `i`'s simplex against profile `σ`. -/
+/-- Face order on deviations in player `i`'s simplex against profile `σ`.
+    Shared-opponent version: for every pure profile p consistent with σ[i ↦ A]
+    and every action b in B, player i weakly prefers switching to b.
+    The opponent part of p is shared between the two profiles being compared. -/
 def DevFaceLE (i : N) (σ : Profile N V) (A B : DSimplex (V i)) : Prop :=
-  ∀ p, Consistent (σ[i ↦ A]) p → ∀ q, Consistent (σ[i ↦ B]) q → G.pref i p q
+  ∀ p, Consistent (σ[i ↦ A]) p → ∀ b, b ∈ B.1 →
+    G.pref i p (Function.update p i b)
 
 /-- Strict unilateral deviation to face `A`. -/
 def StrictDev (i : N) (σ : Profile N V) (A : DSimplex (V i)) : Prop :=
@@ -251,26 +255,25 @@ omit [Fintype N] [∀ i, Fintype (V i)] in
 /-- `DevFaceLE` is transitive. -/
 theorem DevFaceLE_trans (i : N) (σ : Profile N V) (A B C : DSimplex (V i)) :
     G.DevFaceLE i σ A B → G.DevFaceLE i σ B C → G.DevFaceLE i σ A C := by
-  intro hAB hBC p hp r hr
+  intro hAB hBC p hp c hc
   classical
-  let b := Classical.choose B.2
-  have hb : b ∈ B.1 := Classical.choose_spec B.2
-  let q : PureProfile N V := fun j => if h : j = i then h ▸ b else p j
+  -- Pick any element b of B (nonempty since B is a DSimplex)
+  obtain ⟨b, hb⟩ := B.2
+  -- Build q = p[i ↦ b], which is consistent with σ[i ↦ B]
+  let q := Function.update p i b
   have hq : Consistent (σ[i ↦ B]) q := by
     intro j
     by_cases hji : j = i
-    · subst hji
-      simp [q]
-      exact hb
-    · simp [q, hji]
-      show p j ∈ (σ j).1
-      have : (σ[i ↦ A] j) = (σ j) := by simp [Function.update, dif_neg hji]
-      rw [← this]
-      exact hp j
-  have hpq : G.pref i p q := hAB p hp q hq
-  have hqr : G.pref i q r := hBC q hq r hr
-  have : IsTrans (PureProfile N V) (G.pref i) := G.pref_preorder i |>.toIsTrans
-  exact this.trans p q r hpq hqr
+    · subst hji; simp [q]; exact hb
+    · simp [q, hji]; have := hp j; simp [hji] at this; exact this
+  -- Chain: pref i p q (from A ≤ B) and pref i q (q[i↦c]) (from B ≤ C)
+  have hpq : G.pref i p q := hAB p hp b hb
+  have hqc : G.pref i q (Function.update q i c) := hBC q hq c hc
+  -- Note: Function.update q i c = Function.update p i c
+  have : Function.update q i c = Function.update p i c := by
+    ext j; simp [q, Function.update]; split_ifs <;> rfl
+  rw [this] at hqc
+  exact (G.pref_preorder i).toIsTrans.trans p q (Function.update p i c) hpq hqc
 
 omit [Fintype N] [∀ i, Fintype (V i)] in
 /-- `DevFaceLE` context equivalence. -/
@@ -288,14 +291,10 @@ theorem DevFaceLE_context_eq {i : N} {σ τ : Profile N V}
     · subst hj; simp
     · simp [hj]; rw [h j hj]
   constructor
-  · intro H p hp q hq
-    have hp' : Consistent (σ[i ↦ A]) p := by rw [h_cons]; exact hp
-    have hq' : Consistent (σ[i ↦ B]) q := by rw [h_cons]; exact hq
-    exact H p hp' q hq'
-  · intro H p hp q hq
-    have hp' : Consistent (τ[i ↦ A]) p := by rw [← h_cons]; exact hp
-    have hq' : Consistent (τ[i ↦ B]) q := by rw [← h_cons]; exact hq
-    exact H p hp' q hq'
+  · intro H p hp b hb
+    exact H p ((h_cons p).mpr hp) b hb
+  · intro H p hp b hb
+    exact H p ((h_cons p).mp hp) b hb
 
 omit [Fintype N] [∀ i, Fintype (V i)] in
 /-- `DevFaceLE` is antitone in the profile argument. -/
@@ -303,14 +302,8 @@ theorem DevFaceLE_antitone
     {σ τ : Profile N V} (h : ProfileLE σ τ)
     (i : N) (A B : DSimplex (V i)) :
     G.DevFaceLE i τ A B → G.DevFaceLE i σ A B := by
-  intro hdev p hp q hq
-  have hσA : Consistent (τ[i ↦ A]) p := by
-    apply Consistent_mono (ProfileLE_update h i A)
-    exact hp
-  have hσB : Consistent (τ[i ↦ B]) q := by
-    apply Consistent_mono (ProfileLE_update h i B)
-    exact hq
-  exact hdev p hσA q hσB
+  intro hdev p hp b hb
+  exact hdev p (Consistent_mono (ProfileLE_update h i A) hp) b hb
 
 omit [Fintype N] [∀ i, Fintype (V i)] in
 /-- `DevFaceLE` is monotone in the left face. -/
@@ -318,11 +311,8 @@ theorem DevFaceLE_left_mono
     {i : N} {σ : Profile N V} {A A' B : DSimplex (V i)}
     (h : DSimplex.IsSubface A A') :
     G.DevFaceLE i σ A' B → G.DevFaceLE i σ A B := by
-  intro hle p hp q hq
-  have hp' : Consistent (σ[i ↦ A']) p := by
-    apply Consistent_mono (ProfileLE_update_left σ i h)
-    exact hp
-  exact hle p hp' q hq
+  intro hle p hp b hb
+  exact hle p (Consistent_mono (ProfileLE_update_left σ i h) hp) b hb
 
 omit [Fintype N] [∀ i, Fintype (V i)] in
 /-- `DevFaceLE` is monotone in the right face. -/
@@ -330,11 +320,8 @@ theorem DevFaceLE_right_mono
     {i : N} {σ : Profile N V} {A B B' : DSimplex (V i)}
     (h : DSimplex.IsSubface B B') :
     G.DevFaceLE i σ A B' → G.DevFaceLE i σ A B := by
-  intro hle p hp q hq
-  have hq' : Consistent (σ[i ↦ B']) q := by
-    apply Consistent_mono (ProfileLE_update_left σ i h)
-    exact hq
-  exact hle p hp q hq'
+  intro hle p hp b hb
+  exact hle p hp b (h hb)
 
 -- ----------------------------------------------------------------
 -- Section 4.3: Better Relation and Best Response Existence
@@ -454,35 +441,29 @@ private theorem outsideDominated_neg_witness_mem
     {i : N} {σ : Profile N V} {A : DSimplex (V i)}
     (h_inv : G.OutsideDominated i σ)
     (h_neg : ¬G.DevFaceLE i σ A (σ i)) :
-    ∃ p q, Consistent (σ[i ↦ A]) p ∧ Consistent (σ[i ↦ σ i]) q ∧
-      ¬G.pref i p q ∧ p i ∈ A.1 ∧ p i ∈ (σ i).1 := by
+    ∃ p b, Consistent (σ[i ↦ A]) p ∧ b ∈ (σ i).1 ∧
+      ¬G.pref i p (Function.update p i b) ∧ p i ∈ A.1 ∧ p i ∈ (σ i).1 := by
   classical
-  -- Unfold the negation: ∃ p q, ...
+  -- Unfold the negation: ∃ p b, ...
   rw [DevFaceLE] at h_neg
   push_neg at h_neg
-  obtain ⟨p, hp, q, hq, h_not_pref⟩ := h_neg
+  obtain ⟨p, hp, b, hb, h_not_pref⟩ := h_neg
   -- p i ∈ A.1 by consistency
   have hp_i : p i ∈ A.1 := by
     have := hp i; simp at this; exact this
-  -- q i ∈ (σ i).1 by consistency
-  have hq_i : q i ∈ (σ i).1 := by
-    have := hq i; simp at this; exact this
   -- Must show p i ∈ (σ i).1
   by_cases h_mem : p i ∈ (σ i).1
-  · exact ⟨p, q, hp, hq, h_not_pref, hp_i, h_mem⟩
-  · -- If p i ∉ (σ i).1, OutsideDominated gives pref i p q, contradiction
+  · exact ⟨p, b, hp, hb, h_not_pref, hp_i, h_mem⟩
+  · -- If p i ∉ (σ i).1, OutsideDominated gives pref i p (p[i↦b]), contradiction
     exfalso
-    have : G.DevFaceLE i σ (DSimplex.vertex (p i)) (DSimplex.vertex (q i)) :=
-      h_inv (p i) h_mem (q i) hq_i
-    -- Specialize to p and q
-    have h_pref : G.pref i p q := by
-      apply this
+    have h_od : G.DevFaceLE i σ (DSimplex.vertex (p i)) (DSimplex.vertex b) :=
+      h_inv (p i) h_mem b hb
+    have h_pref : G.pref i p (Function.update p i b) := by
+      apply h_od
       · intro k; by_cases hki : k = i
         · subst hki; simp; exact Finset.mem_singleton_self _
         · simp [hki]; have := hp k; simp [hki] at this; exact this
-      · intro k; by_cases hki : k = i
-        · subst hki; simp; exact Finset.mem_singleton_self _
-        · simp [hki]; have := hq k; simp [hki] at this; exact this
+      · exact Finset.mem_singleton_self b
     exact h_not_pref h_pref
 
 omit [Fintype N] [∀ i, Fintype (V i)] in
@@ -495,7 +476,7 @@ theorem exists_restrictingStrictDev_of_not_nash_with_outsideDom
   classical
   obtain ⟨i, A, hdev⟩ := G.exists_strictDev_of_not_nash h
   -- Get witness from the backward direction ¬DevFaceLE i σ A (σ i)
-  obtain ⟨p, q, hp, hq, h_not_pref, hp_i_A, hp_i_σ⟩ :=
+  obtain ⟨p, b, hp, hb, h_not_pref, hp_i_A, hp_i_σ⟩ :=
     G.outsideDominated_neg_witness_mem (h_inv i) hdev.2
   -- Define A' = A ∩ σ i (nonempty since p i is in both)
   have h_ne : (A.1 ∩ (σ i).1).Nonempty := ⟨p i, Finset.mem_inter.mpr ⟨hp_i_A, hp_i_σ⟩⟩
@@ -511,14 +492,14 @@ theorem exists_restrictingStrictDev_of_not_nash_with_outsideDom
   -- StrictDev i σ A' — forward: σ i ≤ A' via right_mono from σ i ≤ A
   have h_fwd : G.DevFaceLE i σ (σ i) A' :=
     G.DevFaceLE_right_mono hA'_sub_A hdev.1
-  -- StrictDev i σ A' — backward: ¬(A' ≤ σ i), via the witness p, q
+  -- StrictDev i σ A' — backward: ¬(A' ≤ σ i), via the witness p, b
   have h_bwd : ¬G.DevFaceLE i σ A' (σ i) := by
     intro h_contra
     have hp' : Consistent (σ[i ↦ A']) p := by
       intro k; by_cases hki : k = i
       · subst hki; simp; exact Finset.mem_inter.mpr ⟨hp_i_A, hp_i_σ⟩
       · simp [hki]; have := hp k; simp [hki] at this; exact this
-    exact h_not_pref (h_contra p hp' q hq)
+    exact h_not_pref (h_contra p hp' b hb)
   -- A' ≠ σ i: else h_fwd and h_bwd contradict
   have hA'_ne : A' ≠ σ i := by
     intro heq
