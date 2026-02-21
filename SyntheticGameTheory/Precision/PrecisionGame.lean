@@ -92,7 +92,7 @@ private theorem gridPoint1Equiv_eq_one_iff (q : GridPoint 1 0) :
     apply (Function.LeftInverse.injective GridPoint.ofIndex1_toIndex1)
     simpa [ElemCell1.gridPt] using h
 
-private theorem gridPoint0_cases (q : GridPoint 1 0) :
+theorem gridPoint0_cases (q : GridPoint 1 0) :
     q = ElemCell1.gridPt (0 : Fin 2) ∨ q = ElemCell1.gridPt (1 : Fin 2) := by
   let v : Nat := (GridPoint.toIndex1 q).val
   have hvlt : v < 2 := by
