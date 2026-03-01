@@ -1,4 +1,4 @@
-import SyntheticGameTheory
+import SyntheticGameTheory.Basic
 import Mathlib.Data.Fintype.Basic
 import Mathlib.Data.Fintype.Card
 import Mathlib.Data.Fintype.Pi

@@ -1,6 +1,6 @@
-import SyntheticGameTheory
-import SyntheticGameTheory.DeviationGraph
-import SyntheticGameTheory.ProgramGame
+import SyntheticGameTheory.Basic
+import SyntheticGameTheory.Pareto
+import SyntheticGameTheory.Program.ProgramGame
 import Mathlib.Data.Fintype.Pi
 import Mathlib.Tactic.FinCases
 

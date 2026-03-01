@@ -1,5 +1,5 @@
-import SyntheticGameTheory
-import SyntheticGameTheory.DeviationGraph
+import SyntheticGameTheory.Basic
+import SyntheticGameTheory.Pareto
 
 namespace SyntheticGameTheory
 
@@ -129,67 +129,6 @@ theorem MP_no_pureNash : ∀ p, ¬MP.IsPureNash p := by
   · have h := hp 1 true
     simp only [MP, game2x2, Function.update, mkProfile_zero, mkProfile_one] at h
     simp at h
-
-/-- Matching Pennies is competitive: every profile lies on a cycle.
-    The cycle is HH → HT → TT → TH → HH
-    (1 deviates, 0 deviates, 1 deviates, 0 deviates). -/
-theorem MP_competitive : MP.IsCompetitive := by
-  intro p; rw [profile_eq p]
-  rcases Bool.eq_false_or_eq_true (p 0) with h0 | h0 <;>
-    rcases Bool.eq_false_or_eq_true (p 1) with h1 | h1 <;>
-    simp only [h0, h1]
-  -- (H,H): 1→T gives (H,T), cycle (H,T)→(T,T)→(T,H)→(H,H)
-  · refine ⟨mkProfile true false,
-      ⟨1, fun j hj => by simp [mkProfile]; omega,
-          by simp only [MP, game2x2, mkProfile_zero, mkProfile_one]; simp⟩, ?_⟩
-    apply @Relation.TransGen.tail _ _ _ (mkProfile false true)
-    · apply @Relation.TransGen.tail _ _ _ (mkProfile false false)
-      · exact Relation.TransGen.single
-          ⟨0, fun j hj => by simp [mkProfile]; omega,
-              by simp only [MP, game2x2, mkProfile_zero, mkProfile_one]; simp⟩
-      · exact ⟨1, fun j hj => by simp [mkProfile]; omega,
-                by simp only [MP, game2x2, mkProfile_zero, mkProfile_one]; simp⟩
-    · exact ⟨0, fun j hj => by simp [mkProfile]; omega,
-              by simp only [MP, game2x2, mkProfile_zero, mkProfile_one]; simp⟩
-  -- (H,T): 0→T gives (T,T), cycle (T,T)→(T,H)→(H,H)→(H,T)
-  · refine ⟨mkProfile false false,
-      ⟨0, fun j hj => by simp [mkProfile]; omega,
-          by simp only [MP, game2x2, mkProfile_zero, mkProfile_one]; simp⟩, ?_⟩
-    apply @Relation.TransGen.tail _ _ _ (mkProfile true true)
-    · apply @Relation.TransGen.tail _ _ _ (mkProfile false true)
-      · exact Relation.TransGen.single
-          ⟨1, fun j hj => by simp [mkProfile]; omega,
-              by simp only [MP, game2x2, mkProfile_zero, mkProfile_one]; simp⟩
-      · exact ⟨0, fun j hj => by simp [mkProfile]; omega,
-                by simp only [MP, game2x2, mkProfile_zero, mkProfile_one]; simp⟩
-    · exact ⟨1, fun j hj => by simp [mkProfile]; omega,
-              by simp only [MP, game2x2, mkProfile_zero, mkProfile_one]; simp⟩
-  -- (T,H): 0→H gives (H,H), cycle (H,H)→(H,T)→(T,T)→(T,H)
-  · refine ⟨mkProfile true true,
-      ⟨0, fun j hj => by simp [mkProfile]; omega,
-          by simp only [MP, game2x2, mkProfile_zero, mkProfile_one]; simp⟩, ?_⟩
-    apply @Relation.TransGen.tail _ _ _ (mkProfile false false)
-    · apply @Relation.TransGen.tail _ _ _ (mkProfile true false)
-      · exact Relation.TransGen.single
-          ⟨1, fun j hj => by simp [mkProfile]; omega,
-              by simp only [MP, game2x2, mkProfile_zero, mkProfile_one]; simp⟩
-      · exact ⟨0, fun j hj => by simp [mkProfile]; omega,
-                by simp only [MP, game2x2, mkProfile_zero, mkProfile_one]; simp⟩
-    · exact ⟨1, fun j hj => by simp [mkProfile]; omega,
-              by simp only [MP, game2x2, mkProfile_zero, mkProfile_one]; simp⟩
-  -- (T,T): 1→H gives (T,H), cycle (T,H)→(H,H)→(H,T)→(T,T)
-  · refine ⟨mkProfile false true,
-      ⟨1, fun j hj => by simp [mkProfile]; omega,
-          by simp only [MP, game2x2, mkProfile_zero, mkProfile_one]; simp⟩, ?_⟩
-    apply @Relation.TransGen.tail _ _ _ (mkProfile true false)
-    · apply @Relation.TransGen.tail _ _ _ (mkProfile true true)
-      · exact Relation.TransGen.single
-          ⟨0, fun j hj => by simp [mkProfile]; omega,
-              by simp only [MP, game2x2, mkProfile_zero, mkProfile_one]; simp⟩
-      · exact ⟨1, fun j hj => by simp [mkProfile]; omega,
-                by simp only [MP, game2x2, mkProfile_zero, mkProfile_one]; simp⟩
-    · exact ⟨0, fun j hj => by simp [mkProfile]; omega,
-              by simp only [MP, game2x2, mkProfile_zero, mkProfile_one]; simp⟩
 
 -- ================================================================
 -- Stag Hunt

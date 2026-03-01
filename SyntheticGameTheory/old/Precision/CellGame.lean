@@ -1,4 +1,4 @@
-import SyntheticGameTheory
+import SyntheticGameTheory.Basic
 import SyntheticGameTheory.Precision.Grid
 import SyntheticGameTheory.Precision.GridProfile
 
@@ -71,6 +71,12 @@ structure GridPrefSystem (k : Nat) where
     let c := gridMid1 a b
     (¬pref i j a b → ¬pref i j a c ∧ ¬pref i j c b) ∧
     (¬pref i j b a → ¬pref i j b c ∧ ¬pref i j c a)
+  opp_interpolation : ∀ i j₁ j₂ a b, HasGridMid1 k j₁ j₂ →
+    let jm := gridMid1 j₁ j₂
+    pref i j₁ a b → pref i j₂ a b → pref i jm a b
+  opp_interpolation_neg : ∀ i j₁ j₂ a b, HasGridMid1 k j₁ j₂ →
+    let jm := gridMid1 j₁ j₂
+    ¬pref i jm a b → ¬pref i j₁ a b ∨ ¬pref i j₂ a b
 
 attribute [instance] GridPrefSystem.pref_decidable
 
@@ -94,6 +100,8 @@ noncomputable def GridPrefSystem.ofGame
   pref_decidable _ _ _ _ := G.pref_decidable _ _ _
   interpolation _ _ _ _ h := absurd h hasGridMid1_vacuous_zero
   interpolation_neg _ _ _ _ h := absurd h hasGridMid1_vacuous_zero
+  opp_interpolation _ _ _ _ _ h := absurd h hasGridMid1_vacuous_zero
+  opp_interpolation_neg _ _ _ _ _ h := absurd h hasGridMid1_vacuous_zero
 
 -- ================================================================
 -- Section 4: CellDevLE, CellStrictDev, CellIsNash
@@ -295,6 +303,49 @@ def GridPrefSystem.coarsen (gps : GridPrefSystem (k + 1)) : GridPrefSystem k whe
       (ElemCell1.embedIndex a) (ElemCell1.embedIndex b) hmid'
     simp only [hmid_eq] at result
     exact result
+  opp_interpolation i j₁ j₂ a b hmid := by
+    set_option linter.unusedSimpArgs false in
+    have hmid' : HasGridMid1 (k + 1) (ElemCell1.embedIndex j₁) (ElemCell1.embedIndex j₂) := by
+      obtain ⟨⟨sv, hsv_lt⟩, hs1, hsk, hab⟩ := hmid
+      simp only [Fin.val_mk] at hs1 hsk hab
+      refine ⟨⟨sv + 1, by omega⟩, by simp only [Fin.val_mk]; omega,
+             by simp only [Fin.val_mk]; omega, ?_⟩
+      simp only [ElemCell1.embedIndex, Fin.val_mk]
+      have hps : 2 ^ (sv + 1) = 2 ^ sv * 2 := Nat.pow_succ 2 sv
+      rcases hab with ⟨h1, h2⟩ | ⟨h1, h2⟩
+      · left; exact ⟨by omega, coarsen_mod_lemma h2⟩
+      · right; exact ⟨by omega, coarsen_mod_lemma h2⟩
+    have hmid_eq : gridMid1 (ElemCell1.embedIndex j₁) (ElemCell1.embedIndex j₂) =
+        ElemCell1.embedIndex (gridMid1 j₁ j₂) := by
+      apply Fin.ext
+      simp only [gridMid1, ElemCell1.embedIndex, Fin.val_mk]
+      have h_even : 2 ∣ (j₁.val + j₂.val) := hasGridMid1_even hmid
+      omega
+    intro jm h1 h2
+    have result := gps.opp_interpolation i _ _ (ElemCell1.embedIndex a) (ElemCell1.embedIndex b) hmid' h1 h2
+    simp only [hmid_eq] at result; exact result
+  opp_interpolation_neg i j₁ j₂ a b hmid := by
+    set_option linter.unusedSimpArgs false in
+    have hmid' : HasGridMid1 (k + 1) (ElemCell1.embedIndex j₁) (ElemCell1.embedIndex j₂) := by
+      obtain ⟨⟨sv, hsv_lt⟩, hs1, hsk, hab⟩ := hmid
+      simp only [Fin.val_mk] at hs1 hsk hab
+      refine ⟨⟨sv + 1, by omega⟩, by simp only [Fin.val_mk]; omega,
+             by simp only [Fin.val_mk]; omega, ?_⟩
+      simp only [ElemCell1.embedIndex, Fin.val_mk]
+      have hps : 2 ^ (sv + 1) = 2 ^ sv * 2 := Nat.pow_succ 2 sv
+      rcases hab with ⟨h1, h2⟩ | ⟨h1, h2⟩
+      · left; exact ⟨by omega, coarsen_mod_lemma h2⟩
+      · right; exact ⟨by omega, coarsen_mod_lemma h2⟩
+    have hmid_eq : gridMid1 (ElemCell1.embedIndex j₁) (ElemCell1.embedIndex j₂) =
+        ElemCell1.embedIndex (gridMid1 j₁ j₂) := by
+      apply Fin.ext
+      simp only [gridMid1, ElemCell1.embedIndex, Fin.val_mk]
+      have h_even : 2 ∣ (j₁.val + j₂.val) := hasGridMid1_even hmid
+      omega
+    intro jm h
+    have h' : ¬gps.pref i (gridMid1 (ElemCell1.embedIndex j₁) (ElemCell1.embedIndex j₂))
+        (ElemCell1.embedIndex a) (ElemCell1.embedIndex b) := by rwa [hmid_eq]
+    exact gps.opp_interpolation_neg i _ _ (ElemCell1.embedIndex a) (ElemCell1.embedIndex b) hmid' h'
 
 /-- Extract the GridPrefSystem at level j from a level-k system, for j ≤ k. -/
 def GridPrefSystem.towerAt (gps : GridPrefSystem k) : (j : Nat) → j ≤ k → GridPrefSystem j

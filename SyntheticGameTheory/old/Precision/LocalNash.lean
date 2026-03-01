@@ -871,6 +871,375 @@ theorem exists_localNashRefinement (gps' : GridPrefSystem (k + 1))
             | exact hall.1 | exact hall.2.1 | exact hall.2.2.1 | exact hall.2.2.2.1
 
 -- ================================================================
+-- Section 4a: Lifting CellDevLE from coarse to fine level
+-- ================================================================
+
+/-- If pref holds from both endpoints of an edge to a fixed target b,
+    then it also holds from the midpoint. Uses totality + interpolation + transitivity. -/
+private theorem pref_from_mid_of_endpoints (gps' : GridPrefSystem (k + 1))
+    (i : Fin 2) (q : Fin (2 ^ (k + 1) + 1)) (ei : Fin (2 ^ k))
+    (b : Fin (2 ^ (k + 1) + 1))
+    (h_lo : gps'.pref i q (ElemCell1.embedIndex ⟨ei.val, by omega⟩) b)
+    (h_hi : gps'.pref i q (ElemCell1.embedIndex ⟨ei.val + 1, by omega⟩) b) :
+    gps'.pref i q (ElemCell1.midIndex ei) b := by
+  have hmid := hasGridMid1_ee ei
+  have hmid_eq := gridMid1_ee ei
+  set embLo := ElemCell1.embedIndex (⟨ei.val, by omega⟩ : Fin (2 ^ k + 1))
+  set embHi := ElemCell1.embedIndex (⟨ei.val + 1, by omega⟩ : Fin (2 ^ k + 1))
+  have interp := gps'.interpolation i q embLo embHi hmid; rw [hmid_eq] at interp
+  rcases gps'.pref_total i q embLo embHi with h | h
+  · exact gps'.pref_trans i q _ _ _ (interp.1 h).2 h_hi
+  · exact gps'.pref_trans i q _ _ _ (interp.2 h).2 h_lo
+
+/-- If pref holds from a fixed source a to both endpoints of an edge,
+    then it also holds to the midpoint. -/
+private theorem pref_to_mid_of_endpoints (gps' : GridPrefSystem (k + 1))
+    (i : Fin 2) (q : Fin (2 ^ (k + 1) + 1)) (ep : Fin (2 ^ k))
+    (a : Fin (2 ^ (k + 1) + 1))
+    (h_lo : gps'.pref i q a (ElemCell1.embedIndex ⟨ep.val, by omega⟩))
+    (h_hi : gps'.pref i q a (ElemCell1.embedIndex ⟨ep.val + 1, by omega⟩)) :
+    gps'.pref i q a (ElemCell1.midIndex ep) := by
+  have hmid := hasGridMid1_ee ep
+  have hmid_eq := gridMid1_ee ep
+  set embLo := ElemCell1.embedIndex (⟨ep.val, by omega⟩ : Fin (2 ^ k + 1))
+  set embHi := ElemCell1.embedIndex (⟨ep.val + 1, by omega⟩ : Fin (2 ^ k + 1))
+  have interp := gps'.interpolation i q embLo embHi hmid; rw [hmid_eq] at interp
+  rcases gps'.pref_total i q embLo embHi with h | h
+  · exact gps'.pref_trans i q _ _ _ h_lo (interp.1 h).1
+  · exact gps'.pref_trans i q _ _ _ h_hi (interp.2 h).1
+
+/-- At an embedded coarse opponent point, if coarse CellDevLE holds between parent cells A and P,
+    then pref holds for all fine action points of their subcells A' and B.
+    Fine action points include embedded coarse points and midpoints;
+    midpoints are handled via pref_from_mid_of_endpoints and pref_to_mid_of_endpoints. -/
+private theorem pref_fine_actions_at_emb_opp (gps' : GridPrefSystem (k + 1))
+    (i : Fin 2) (j : Fin (2 ^ k + 1))
+    (A P : ElemCell1 k) (A' B : ElemCell1 (k + 1))
+    (hA' : A' ∈ A.subcells) (hB : B ∈ P.subcells)
+    (hDevLE : CellDevLE gps'.coarsen i
+      (fun p => if p = (1 - i) then ElemCell1.vertex j else A) A P) :
+    ∀ a ∈ A'.gridPoints, ∀ b ∈ B.gridPoints,
+      gps'.pref i (ElemCell1.embedIndex j)
+        (GridPoint.toIndex1 a) (GridPoint.toIndex1 b) := by
+  -- hDevLE gives: for all q ∈ (vertex j).gp, all a ∈ A.gp, all b ∈ P.gp, pref(q,a,b)
+  -- Since (vertex j).gp = {gridPt j}, this simplifies to:
+  -- for all a ∈ A.gp, b ∈ P.gp, gps'.coarsen.pref i j (toIndex1 a) (toIndex1 b)
+  -- which is: gps'.pref i (embIdx j) (embIdx (toIndex1 a)) (embIdx (toIndex1 b))
+  have hPref : ∀ cA ∈ A.gridPoints, ∀ cB ∈ P.gridPoints,
+      gps'.pref i (ElemCell1.embedIndex j)
+        (ElemCell1.embedIndex (GridPoint.toIndex1 cA))
+        (ElemCell1.embedIndex (GridPoint.toIndex1 cB)) := by
+    intro cA hcA cB hcB
+    exact hDevLE (ElemCell1.gridPt j) (by simp [show (1 - i : Fin 2) ≠ i from by omega])
+      cA hcA cB hcB
+  -- Now extend to fine grid points (embedded + midpoints)
+  -- Grid points of subcells: vertex embedIndex → {embedIndex v}
+  -- edge's subcells have grid points that are embedIndex or midIndex of the parent edge
+  -- We handle each combination via pref_from_mid_of_endpoints and pref_to_mid_of_endpoints
+  intro a ha b hb
+  -- Helper: for embedded coarse action points, pref follows from hPref
+  -- For midpoint action points, use pref_from/to_mid_of_endpoints
+
+  -- First, extend b: show pref(embIdx j, embIdx(coarseA), fine_b) for any coarse A point
+  have pref_coarse_a_fine_b : ∀ (av : Fin (2 ^ k + 1)), av ∈ A.gridPoints.image GridPoint.toIndex1 →
+      gps'.pref i (ElemCell1.embedIndex j) (ElemCell1.embedIndex av) (GridPoint.toIndex1 b) := by
+    intro av hav
+    simp [Finset.mem_image] at hav
+    obtain ⟨ga, hga_mem, hga_eq⟩ := hav
+    -- b is a fine grid point of B, which is a subcell of P
+    -- If P = vertex w: B = vertex(embIdx w), b = gridPt(embIdx w)
+    --   pref follows from hPref directly
+    -- If P = edge ep: B ∈ subcells(edge ep)
+    --   b is embLo_p, mid_p, or embHi_p
+    --   embLo/embHi: pref from hPref
+    --   mid_p: pref_to_mid_of_endpoints from prefs at embLo_p and embHi_p
+    match hP : P with
+    | .vertex w =>
+      simp [ElemCell1.subcells] at hB; subst hB
+      simp [ElemCell1.gridPoints] at hb; subst hb
+      rw [← hga_eq]
+      exact hPref ga hga_mem _ (by simp)
+    | .edge ep =>
+      have hep := ep.isLt
+      -- Get pref at both coarse endpoints of P
+      have h_lo : gps'.pref i (ElemCell1.embedIndex j)
+          (ElemCell1.embedIndex av) (ElemCell1.embedIndex ⟨ep.val, by omega⟩) := by
+        rw [← hga_eq]
+        exact hPref ga hga_mem (ElemCell1.gridPt ⟨ep.val, by omega⟩)
+          (by simp [ElemCell1.gridPoints]; left; rfl)
+      have h_hi : gps'.pref i (ElemCell1.embedIndex j)
+          (ElemCell1.embedIndex av) (ElemCell1.embedIndex ⟨ep.val + 1, by omega⟩) := by
+        rw [← hga_eq]
+        exact hPref ga hga_mem (ElemCell1.gridPt ⟨ep.val + 1, by omega⟩)
+          (by simp [ElemCell1.gridPoints]; right; rfl)
+      -- b is in a subcell of edge ep
+      simp [ElemCell1.subcells] at hB
+      rcases hB with rfl | rfl | rfl <;> simp [ElemCell1.gridPoints] at hb
+      · rcases hb with rfl | rfl
+        · simpa [ElemCell1.gridPt, GridPoint.toIndex1, GridPoint.ofIndex1] using h_lo
+        · exact pref_to_mid_of_endpoints gps' i _ ep _ h_lo h_hi
+      · subst hb; exact pref_to_mid_of_endpoints gps' i _ ep _ h_lo h_hi
+      · rcases hb with rfl | rfl
+        · exact pref_to_mid_of_endpoints gps' i _ ep _ h_lo h_hi
+        · simpa [ElemCell1.gridPt, GridPoint.toIndex1, GridPoint.ofIndex1] using h_hi
+  -- Now extend a: show pref(embIdx j, fine_a, fine_b)
+  match hA : A with
+  | .vertex v =>
+    simp [ElemCell1.subcells] at hA'; subst hA'
+    simp [ElemCell1.gridPoints] at ha; subst ha
+    exact pref_coarse_a_fine_b v (by simp [Finset.mem_image]; exact ⟨_, rfl, rfl⟩)
+  | .edge ea =>
+    have hea := ea.isLt
+    set lo := (⟨ea.val, by omega⟩ : Fin (2 ^ k + 1))
+    set hi := (⟨ea.val + 1, by omega⟩ : Fin (2 ^ k + 1))
+    have h_lo_b := pref_coarse_a_fine_b lo
+      (by simp [Finset.mem_image]; exact ⟨ElemCell1.gridPt lo, by simp [ElemCell1.gridPoints]; left; rfl,
+           by simp [ElemCell1.gridPt, GridPoint.toIndex1, GridPoint.ofIndex1]⟩)
+    have h_hi_b := pref_coarse_a_fine_b hi
+      (by simp [Finset.mem_image]; exact ⟨ElemCell1.gridPt hi, by simp [ElemCell1.gridPoints]; right; rfl,
+           by simp [ElemCell1.gridPt, GridPoint.toIndex1, GridPoint.ofIndex1]⟩)
+    -- a is in a subcell of edge ea
+    simp [ElemCell1.subcells] at hA'
+    rcases hA' with rfl | rfl | rfl <;> simp [ElemCell1.gridPoints] at ha
+    · rcases ha with rfl | rfl
+      · simpa [ElemCell1.gridPt, GridPoint.toIndex1, GridPoint.ofIndex1,
+          ElemCell1.embedIndex] using h_lo_b
+      · exact pref_from_mid_of_endpoints gps' i _ ea _ h_lo_b h_hi_b
+    · subst ha; exact pref_from_mid_of_endpoints gps' i _ ea _ h_lo_b h_hi_b
+    · rcases ha with rfl | rfl
+      · exact pref_from_mid_of_endpoints gps' i _ ea _ h_lo_b h_hi_b
+      · simpa [ElemCell1.gridPt, GridPoint.toIndex1, GridPoint.ofIndex1,
+          ElemCell1.embedIndex] using h_hi_b
+
+/-- Lifting CellDevLE from coarse to fine level.
+    If CellDevLE holds at the coarse level between parent cells A and P,
+    then it holds at the fine level between any subcells A' ⊂ A and B ⊂ P.
+    Uses interpolation for action midpoints and opp_interpolation for opponent midpoints. -/
+private theorem cellDevLE_lift (gps' : GridPrefSystem (k + 1))
+    (i : Fin 2) (σ : CellProfile1 k) (σ' : CellProfile1 (k + 1))
+    (hRef : σ'.Refines σ) (A P : ElemCell1 k) (A' B : ElemCell1 (k + 1))
+    (hA' : A' ∈ A.subcells) (hB : B ∈ P.subcells)
+    (hDevLE : CellDevLE gps'.coarsen i σ A P) :
+    CellDevLE gps' i σ' A' B := by
+  intro q hq a ha b hb
+  -- Construct a "virtual" coarse profile where opponent plays vertex j
+  -- for each coarse opponent point j, then use pref_fine_actions_at_emb_opp
+  have hPref_at_emb : ∀ (j : Fin (2 ^ k + 1)),
+      ElemCell1.gridPt j ∈ (σ (1 - i)).gridPoints →
+      gps'.pref i (ElemCell1.embedIndex j) (GridPoint.toIndex1 a) (GridPoint.toIndex1 b) := by
+    intro j hj
+    apply pref_fine_actions_at_emb_opp gps' i j A P A' B hA' hB _ a ha b hb
+    intro q' hq' cA hcA cB hcB
+    simp [ElemCell1.gridPoints, show (1 - i : Fin 2) ≠ i from by omega] at hq'
+    subst hq'
+    exact hDevLE (ElemCell1.gridPt j) hj cA hcA cB hcB
+  -- Now extend to fine opponent grid points
+  match hσopp : σ (1 - i) with
+  | .vertex v =>
+    have hRef_opp := hRef (1 - i); rw [hσopp] at hRef_opp
+    simp [ElemCell1.subcells] at hRef_opp
+    have : q ∈ (ElemCell1.vertex (ElemCell1.embedIndex v) : ElemCell1 (k + 1)).gridPoints := by
+      rw [← hRef_opp]; exact hq
+    simp [ElemCell1.gridPoints] at this; subst this
+    exact hPref_at_emb v (by simp [hσopp])
+  | .edge ej =>
+    have hej := ej.isLt
+    have hRef_opp := hRef (1 - i); rw [hσopp] at hRef_opp
+    set lo_j := (⟨ej.val, by omega⟩ : Fin (2 ^ k + 1))
+    set hi_j := (⟨ej.val + 1, by omega⟩ : Fin (2 ^ k + 1))
+    have h_at_lo := hPref_at_emb lo_j (by rw [hσopp]; simp [ElemCell1.gridPoints]; left; rfl)
+    have h_at_hi := hPref_at_emb hi_j (by rw [hσopp]; simp [ElemCell1.gridPoints]; right; rfl)
+    -- q is a fine grid point of σ'(1-i), a subcell of edge ej
+    -- q.toIndex1 is either embedIndex lo_j, midIndex ej, or embedIndex hi_j
+    simp [ElemCell1.subcells] at hRef_opp
+    rcases hRef_opp with rfl | rfl | rfl <;> simp [ElemCell1.gridPoints] at hq
+    · rcases hq with rfl | rfl
+      · exact h_at_lo
+      · -- q = gridPt(midIndex ej): use opp_interpolation
+        have hmid := hasGridMid1_embedded_edge ej
+        have hmid_eq := gridMid1_embedded_edge ej
+        simp only [ElemCell1.gridPt, GridPoint.toIndex1, GridPoint.ofIndex1] at h_at_lo h_at_hi ⊢
+        rw [show ElemCell1.midIndex ej = gridMid1 (ElemCell1.embedIndex lo_j)
+            (ElemCell1.embedIndex hi_j) from hmid_eq.symm]
+        exact gps'.opp_interpolation i _ _ _ _ hmid h_at_lo h_at_hi
+    · subst hq
+      have hmid := hasGridMid1_embedded_edge ej
+      have hmid_eq := gridMid1_embedded_edge ej
+      simp only [ElemCell1.gridPt, GridPoint.toIndex1, GridPoint.ofIndex1] at h_at_lo h_at_hi ⊢
+      rw [show ElemCell1.midIndex ej = gridMid1 (ElemCell1.embedIndex lo_j)
+          (ElemCell1.embedIndex hi_j) from hmid_eq.symm]
+      exact gps'.opp_interpolation i _ _ _ _ hmid h_at_lo h_at_hi
+    · rcases hq with rfl | rfl
+      · have hmid := hasGridMid1_embedded_edge ej
+        have hmid_eq := gridMid1_embedded_edge ej
+        simp only [ElemCell1.gridPt, GridPoint.toIndex1, GridPoint.ofIndex1] at h_at_lo h_at_hi ⊢
+        rw [show ElemCell1.midIndex ej = gridMid1 (ElemCell1.embedIndex lo_j)
+            (ElemCell1.embedIndex hi_j) from hmid_eq.symm]
+        exact gps'.opp_interpolation i _ _ _ _ hmid h_at_lo h_at_hi
+      · exact h_at_hi
+
+/-- Every fine cell has a coarse parent: vertex(2j) → vertex j, vertex(2j+1) → edge j,
+    edge(2j) → edge j, edge(2j+1) → edge j. -/
+private def coarseParent : ElemCell1 (k + 1) → ElemCell1 k
+  | .vertex ⟨v, hv⟩ =>
+    if h : v % 2 = 0 then
+      .vertex ⟨v / 2, by omega⟩
+    else
+      .edge ⟨v / 2, by omega⟩
+  | .edge ⟨e, he⟩ =>
+    .edge ⟨e / 2, by omega⟩
+
+private theorem mem_coarseParent_subcells (B : ElemCell1 (k + 1)) :
+    B ∈ (coarseParent B).subcells := by
+  match B with
+  | .vertex ⟨v, hv⟩ =>
+    simp only [coarseParent]
+    split
+    · -- v even: parent = vertex(v/2), subcells = [vertex(embedIndex(v/2))]
+      rename_i heven
+      simp [ElemCell1.subcells, ElemCell1.embedIndex]
+      exact Fin.ext (by omega)
+    · -- v odd: parent = edge(v/2), subcells include vertex(midIndex(v/2))
+      rename_i hodd
+      simp [ElemCell1.subcells, ElemCell1.midIndex]
+      exact ⟨_, Or.inl (Or.inr rfl), Fin.ext (by omega)⟩
+  | .edge ⟨e, he⟩ =>
+    simp only [coarseParent]
+    simp [ElemCell1.subcells]
+    have hmod := Nat.mod_two_eq_zero_or_one e
+    rcases hmod with heven | hodd
+    · -- e even: parent = edge(e/2), left subcell = edge(2*(e/2)) = edge(e)
+      left; left; exact Fin.ext (by omega)
+    · -- e odd: parent = edge(e/2), right subcell = edge(2*(e/2)+1) = edge(e)
+      right; exact Fin.ext (by omega)
+
+/-- Cross-boundary deviations are blocked: if σ is CellIsNash at the coarse level
+    and σ' is a local Nash refinement, then σ' is CellIsNash at the fine level. -/
+theorem localNash_lift (gps' : GridPrefSystem (k + 1))
+    (σ : CellProfile1 k) (σ' : CellProfile1 (k + 1))
+    (hN : CellIsNash gps'.coarsen σ) (hL : IsLocalNash gps' σ σ')
+    : CellIsNash gps' σ' := by
+  intro i B
+  by_cases hBsub : B ∈ (σ i).subcells
+  · exact hL.2 i B hBsub
+  · -- B ∉ subcells(σ i): cross-boundary deviation
+    intro ⟨hFwd, hBwd⟩
+    -- Find the coarse parent P of B
+    set P := coarseParent B
+    have hB_in_P := mem_coarseParent_subcells B
+    -- P ≠ σ i (otherwise B ∈ subcells(σ i))
+    -- From coarse Nash: ¬CellStrictDev coarsen i σ P
+    have hNoCoarseDev := hN i P
+    simp only [CellStrictDev] at hNoCoarseDev
+    push_neg at hNoCoarseDev
+    -- σ'(i) ∈ subcells(σ i) from IsLocalNash
+    have hσ'i_sub := hL.1 i
+    -- Case 1: ¬CellDevLE(σ i, P) at coarse → ¬CellDevLE(σ'i, B) at fine → contradiction with hFwd
+    -- Case 2: CellDevLE(σ i, P) at coarse → CellDevLE(P, σ i) at coarse → lift to CellDevLE(B, σ'i) → contradiction with hBwd
+    by_cases hCoarseFwd : CellDevLE gps'.coarsen i σ (σ i) P
+    · -- Case 2: CellDevLE(σ i, P) at coarse, so CellDevLE(P, σ i) at coarse
+      have hCoarseBwd := hNoCoarseDev hCoarseFwd
+      -- Lift: CellDevLE(P, σ i) at coarse → CellDevLE(B, σ'i) at fine
+      exact hBwd (cellDevLE_lift gps' i σ σ' hL.1 P (σ i) B (σ' i) hB_in_P hσ'i_sub hCoarseBwd)
+    · -- Case 1: ¬CellDevLE(σ i, P) at coarse
+      -- This means ∃ coarse q, a, b where ¬pref
+      -- We need ¬CellDevLE(σ'i, B) at fine, contradicting hFwd
+      -- But we can get CellDevLE(σ'i, B) → CellDevLE(σ i, P) via a different argument
+      -- Actually, hFwd : CellDevLE(σ'i, B) at fine level.
+      -- We show CellDevLE(σ'i, B) → CellDevLE(σ i, P) at coarse level (by restriction)
+      -- Then contradict hCoarseFwd
+      apply hCoarseFwd
+      -- Show CellDevLE(σ i, P) at coarse from hFwd : CellDevLE(σ'i, B) at fine
+      -- CellDevLE coarsen i σ (σ i) P means:
+      -- for all q ∈ σ(1-i).gp, all a ∈ (σ i).gp, all b ∈ P.gp, coarsen.pref i (toIndex q) (toIndex a) (toIndex b)
+      -- coarsen.pref i j a b = gps'.pref i (embIdx j) (embIdx a) (embIdx b)
+      -- So we need: gps'.pref i (embIdx(toIndex q)) (embIdx(toIndex a)) (embIdx(toIndex b))
+      -- hFwd : CellDevLE gps' i σ' (σ'i) B means:
+      -- for all q' ∈ σ'(1-i).gp, all a' ∈ σ'(i).gp, all b' ∈ B.gp, pref(toIndex q', toIndex a', toIndex b')
+      -- We need embedded coarse points to be in the fine subcells:
+      -- embIdx(toIndex q) ∈ σ'(1-i).gp? Only if σ'(1-i) contains that embedded point.
+      -- This is NOT guaranteed — σ'(1-i) might not contain the embedded point.
+      -- E.g., if σ(1-i) = edge ej and σ'(1-i) = mid_vtx, then only midIndex ej is in σ'(1-i).gp
+      -- So this direct approach fails.
+      -- Alternative: use opp_interpolation_neg (contrapositive)
+      -- ¬CellDevLE(σ i, P) at coarse means ∃ coarse q,a,b where ¬coarsen.pref(q,a,b)
+      -- = ¬gps'.pref(embIdx q, embIdx a, embIdx b)
+      -- Need to show ¬CellDevLE(σ'i, B) at fine.
+      -- Need to find fine q', a', b' where ¬pref(q', a', b')
+      -- From ¬pref at embedded points, by opp_interpolation_neg:
+      --   ¬pref(mid_j, embIdx a, embIdx b) → ¬pref(embIdx jl, ...) ∨ ¬pref(embIdx jr, ...)
+      -- But we have the reverse: ¬pref at an endpoint, want ¬pref at midpoint.
+      -- opp_interpolation_neg gives: ¬pref(mid) → ¬pref(j1) ∨ ¬pref(j2)
+      -- We want: ¬pref(j1) → ¬pref(mid)? No, that's not what opp_interpolation_neg gives.
+      -- opp_interpolation_neg is the CONTRAPOSITIVE of opp_interpolation:
+      -- pref(j1) ∧ pref(j2) → pref(mid), so ¬pref(mid) → ¬pref(j1) ∨ ¬pref(j2)
+      -- We need: ¬pref(j1) → ¬pref(mid), which would be interpolation in the OTHER direction.
+      -- This is NOT given by any axiom!
+      -- So this approach has a fundamental issue.
+      -- HOWEVER: we can use a different strategy.
+      -- Instead of trying to prove ¬CellDevLE(σ'i, B), we can prove CellDevLE(B, σ'i).
+      -- If ¬CellDevLE(σ i, P) and ¬CellDevLE(P, σ i) at coarse, we can't conclude anything.
+      -- But from coarse Nash, either CellDevLE(σ i, P) → CellDevLE(P, σ i), meaning
+      --   if CellDevLE(σ i, P) then CellDevLE(P, σ i), so we lift CellDevLE(P, σ i).
+      -- And if ¬CellDevLE(σ i, P), we DON'T KNOW CellDevLE(P, σ i) — we only know the implication!
+      -- Wait, push_neg gives: CellDevLE(σ i, P) → CellDevLE(P, σ i)
+      -- So if ¬CellDevLE(σ i, P), the implication is vacuously true and tells us nothing about CellDevLE(P, σ i)
+      -- We need to handle this case differently.
+      -- Actually, re-examining:
+      --   hNoCoarseDev : CellDevLE(σ i, P) → CellDevLE(P, σ i) (from ¬StrictDev)
+      --   hCoarseFwd : ¬CellDevLE(σ i, P)
+      -- We know ¬CellDevLE(σ i, P). We want to show ¬CellDevLE(σ'i, B) to contradict hFwd.
+      -- But we can't derive ¬CellDevLE(σ'i, B) from ¬CellDevLE(σ i, P) because
+      --   CellDevLE(σ'i, B) quantifies over FINE points (which may not include all coarse points).
+      -- This is a real gap. Let me reconsider.
+      -- Maybe we need CellDevLE(P, σ i) regardless (not just as an implication)?
+      -- From coarse Nash: for EVERY P, ¬CellStrictDev i σ P.
+      -- StrictDev = DevLE(σ i, P) ∧ ¬DevLE(P, σ i)
+      -- ¬StrictDev = ¬DevLE(σ i, P) ∨ DevLE(P, σ i)
+      -- So EITHER ¬DevLE(σ i, P) OR DevLE(P, σ i).
+      -- In Case 1 where ¬DevLE(σ i, P), we DON'T know DevLE(P, σ i).
+      -- Hmm, but in this case, P is at least not strictly better than σ i.
+      -- Actually, ¬StrictDev means: it's NOT the case that P is strictly better.
+      -- P strictly better = DevLE(σ i, P) ∧ ¬DevLE(P, σ i)
+      -- ¬strictly better = ¬DevLE(σ i, P) ∨ DevLE(P, σ i)
+      -- So either:
+      --   (a) ¬DevLE(σ i, P): P is not weakly preferred over σ i at some point
+      --   (b) DevLE(P, σ i): σ i is weakly preferred over P
+      -- In case (a), σ i is not "below" P. But this doesn't mean σ i is "above" P.
+      -- For the fine level, in case (a), we have ¬DevLE(σ i, P) meaning
+      -- ∃ coarse q, a ∈ (σ i).gp, b ∈ P.gp, ¬pref(q, a, b).
+      -- We need ¬DevLE(σ'i, B) meaning ∃ fine q', a' ∈ σ'(i).gp, b' ∈ B.gp, ¬pref(q', a', b').
+      -- The fine σ'(i).gp and B.gp are subsets of the fine points of σ i and P respectively.
+      -- But the coarse witness (q, a, b) might not be in the fine subcells.
+      -- HOWEVER: B.gp SHARES at least one point with P.gp (embedded coarse endpoints).
+      --   Wait, B is a subcell of P. If P = edge ep, B.gp is a subset of {embLo_p, mid_p, embHi_p}.
+      --   The coarse b ∈ P.gp is either embLo_p or embHi_p (coarse grid points).
+      --   We need embIdx(b) ∈ B.gp. But B could be the mid_vtx subcell, whose only point is mid_p.
+      --   In that case, embIdx(embLo_p) = ⟨2*ep, _⟩ ∉ {⟨2*ep+1, _⟩} = mid_vtx.gp.
+      -- So the coarse witness b might not be in B.gp. The approach fails.
+      -- NEW STRATEGY: we need a STRONGER version that doesn't case-split on CellDevLE(σ i, P).
+      -- Instead: show CellDevLE(B, σ'i) directly, using the fact that P "wraps around" B
+      --   and σ i "wraps around" σ'i, and somehow derive CellDevLE(P, σ i).
+      -- Actually, let me re-examine. From ¬StrictDev:
+      --   ¬DevLE(σ i, P) ∨ DevLE(P, σ i)
+      -- In case DevLE(P, σ i): lift to DevLE(B, σ'i) → done.
+      -- In case ¬DevLE(σ i, P):
+      --   ∃ q ∈ σ(1-i).gp, a ∈ (σ i).gp, b ∈ P.gp, ¬pref(q, a, b)
+      --   We want ¬DevLE(σ'i, B).
+      --   If σ(1-i) = vertex: fine opp point = embIdx(v) ∈ σ'(1-i).gp always.
+      --     Still need a ∈ σ'(i).gp and b ∈ B.gp matching the coarse witness.
+      --   Problem: σ'(i) might not contain the coarse a, and B might not contain the coarse b.
+      -- I think the fundamental issue is that the lifting cannot work for arbitrary subcells.
+      -- It only works in one direction: coarse DevLE lifts to fine DevLE (using interpolation).
+      -- The negation doesn't lift because subcells can "miss" the coarse witness points.
+      -- So localNash_lift as stated CANNOT be proved.
+      -- The correct approach: directly prove exists_cellIsNash_refinement with the right cell choice
+      --   that ensures both local AND cross-boundary deviations are blocked.
+      -- OR: prove a weaker version where the lifting works for specific cell choices
+      --   (e.g., when σ'(i) always contains at least one embedded coarse endpoint).
+      sorry
+
+-- ================================================================
 -- Section 4: Backward direction — extract sign data from IsLocalNash
 -- ================================================================
 

@@ -1,5 +1,5 @@
-import SyntheticGameTheory
-import SyntheticGameTheory.DeviationGraph
+import SyntheticGameTheory.Basic
+import SyntheticGameTheory.Pareto
 
 /-!
 # Program Equilibrium — Core Axiomatics

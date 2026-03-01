@@ -1,5 +1,4 @@
-import SyntheticGameTheory
-import Mathlib.Logic.Relation
+import SyntheticGameTheory.Basic
 
 namespace SyntheticGameTheory
 
@@ -11,7 +10,7 @@ namespace Game
 variable (G : Game N V)
 
 -- ================================================================
--- Section 1: Pure Nash and Unilateral Deviations
+-- Section 1: Pure Nash Equilibria
 -- ================================================================
 
 /-- A pure profile is a pure Nash equilibrium if no player can strictly
@@ -19,27 +18,8 @@ variable (G : Game N V)
 def IsPureNash (p : PureProfile N V) : Prop :=
   ∀ i : N, ∀ v : V i, G.pref i p (Function.update p i v)
 
-/-- Unilateral deviation: p → q where exactly one player deviates and
-    strictly prefers q. Since pref is total, ¬pref i p q means q is
-    strictly better for i. -/
-def UniDev (p q : PureProfile N V) : Prop :=
-  ∃ i : N, (∀ j : N, j ≠ i → p j = q j) ∧ ¬G.pref i p q
-
 -- ================================================================
--- Section 2: Game Classification
--- ================================================================
-
-/-- A game is cooperative if its unilateral deviation graph is acyclic.
-    This generalizes the notion of ordinal potential games. -/
-def IsCooperative : Prop :=
-  ∀ p : PureProfile N V, ¬Relation.TransGen G.UniDev p p
-
-/-- A game is competitive if every pure profile lies on a cycle. -/
-def IsCompetitive : Prop :=
-  ∀ p : PureProfile N V, ∃ q, G.UniDev p q ∧ Relation.TransGen G.UniDev q p
-
--- ================================================================
--- Section 3: Pareto Dominance and Frontier
+-- Section 2: Pareto Dominance and Frontier
 -- ================================================================
 
 /-- Profile p weakly Pareto-dominates q: every player weakly prefers p to q. -/
@@ -57,59 +37,17 @@ def IsParetoOptimal (p : PureProfile N V) : Prop :=
   ∀ q : PureProfile N V, ¬G.StrictPareto q p
 
 -- ================================================================
--- Section 4: Core Theorems — Deviations
+-- Section 3: Pure Nash Properties
 -- ================================================================
 
 omit [Fintype N] [∀ i, Fintype (V i)] [∀ i, Nonempty (V i)] in
-/-- Pure Nash is equivalent to having no unilateral deviations. -/
-theorem pureNash_iff_no_unidev (p : PureProfile N V) :
-    G.IsPureNash p ↔ ∀ q, ¬G.UniDev p q := by
-  constructor
-  · intro hNash q ⟨i, huniq, hpref⟩
-    have huniq' : q = Function.update p i (q i) := by
-      ext j
-      by_cases h : j = i
-      · subst h; simp
-      · simp [h, huniq j h]
-    rw [huniq'] at hpref
-    exact hpref (hNash i (q i))
-  · intro hNoDev i v
-    by_contra hNot
-    exact hNoDev _ ⟨i, fun j hji => by simp [hji], hNot⟩
-
-omit [∀ i, Nonempty (V i)] in
-/-- A cooperative game has a well-founded reversed transitive closure. -/
-theorem cooperative_iff_wellFounded :
-    G.IsCooperative ↔ WellFounded (fun p q => Relation.TransGen G.UniDev q p) := by
-  constructor
-  · intro hCoop
-    haveI : Std.Irrefl (fun p q : PureProfile N V => Relation.TransGen G.UniDev q p) :=
-      ⟨fun p hp => hCoop p hp⟩
-    haveI : IsTrans (PureProfile N V) (fun p q => Relation.TransGen G.UniDev q p) :=
-      ⟨fun _ _ _ hqp hrq => Relation.TransGen.trans hrq hqp⟩
-    exact Finite.wellFounded_of_trans_of_irrefl _
-  · intro hWF p hCycle
-    exact hWF.irrefl.irrefl p hCycle
-
-/-- Every cooperative game has at least one pure Nash equilibrium. -/
-theorem cooperative_has_pureNash :
-    G.IsCooperative → ∃ p, G.IsPureNash p := by
-  intro hCoop
-  rw [cooperative_iff_wellFounded] at hCoop
-  classical
-  obtain ⟨p, -, hp⟩ := hCoop.has_min Set.univ ⟨fun i => Classical.ofNonempty, trivial⟩
-  exact ⟨p, (pureNash_iff_no_unidev G p).mpr fun q hDev => hp q trivial (.single hDev)⟩
-
-omit [Fintype N] [∀ i, Fintype (V i)] [∀ i, Nonempty (V i)] in
-/-- Competitive games have no pure Nash equilibria. -/
-theorem competitive_no_pureNash :
-    G.IsCompetitive → ¬∃ p, G.IsPureNash p := by
-  intro hComp ⟨p, hNash⟩
-  obtain ⟨q, hDev, _⟩ := hComp p
-  exact ((pureNash_iff_no_unidev G p).mp hNash) q hDev
+/-- A pure profile is Nash iff no player has a strict unilateral improvement. -/
+theorem isPureNash_iff (p : PureProfile N V) :
+    G.IsPureNash p ↔ ∀ i, ∀ v : V i, G.pref i p (Function.update p i v) :=
+  Iff.rfl
 
 -- ================================================================
--- Section 5: Core Theorems — Pareto
+-- Section 4: Pareto Theorems
 -- ================================================================
 
 omit [Fintype N] [∀ i, Fintype (V i)] [∀ i, Nonempty (V i)] in

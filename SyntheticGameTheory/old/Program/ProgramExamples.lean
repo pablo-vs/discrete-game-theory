@@ -1,7 +1,7 @@
-import SyntheticGameTheory
-import SyntheticGameTheory.DeviationGraph
-import SyntheticGameTheory.ProgramGame
-import SyntheticGameTheory.GuardedTree
+import SyntheticGameTheory.Basic
+import SyntheticGameTheory.Pareto
+import SyntheticGameTheory.Program.ProgramGame
+import SyntheticGameTheory.Program.GuardedTree
 
 /-!
 # Program Equilibrium Examples

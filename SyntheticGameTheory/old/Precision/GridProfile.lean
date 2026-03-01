@@ -1,4 +1,4 @@
-import SyntheticGameTheory
+import SyntheticGameTheory.Basic
 import SyntheticGameTheory.Precision.Grid
 
 namespace SyntheticGameTheory
