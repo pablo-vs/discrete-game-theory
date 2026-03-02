@@ -1,12 +1,2 @@
-import SyntheticGameTheory.Basic
-import SyntheticGameTheory.Pareto
-import SyntheticGameTheory.Examples
-import SyntheticGameTheory.Infinite
-import SyntheticGameTheory.Program.ProgramGame
-import SyntheticGameTheory.Program.GuardedTree
-import SyntheticGameTheory.Program.ProgramExamples
-import SyntheticGameTheory.Precision.Grid
-import SyntheticGameTheory.Precision.GridProfile
-import SyntheticGameTheory.Precision.CellGame
-import SyntheticGameTheory.Precision.SignData
-import SyntheticGameTheory.Precision.LocalNash
+import SyntheticGameTheory.GeneralUnified
+import SyntheticGameTheory.GeneralRefinement
