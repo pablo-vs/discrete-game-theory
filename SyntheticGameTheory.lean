@@ -1,2 +1,4 @@
-import SyntheticGameTheory.GeneralUnified
-import SyntheticGameTheory.GeneralRefinement
+import SyntheticGameTheory.Base
+import SyntheticGameTheory.Refinement
+import SyntheticGameTheory.SelfSimilarity
+import SyntheticGameTheory.Invariance

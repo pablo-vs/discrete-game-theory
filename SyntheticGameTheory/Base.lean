@@ -1,22 +1,158 @@
 import Mathlib.Data.Fintype.Basic
 import Mathlib.Data.Fintype.Card
+import Mathlib.Data.Fintype.Powerset
 import Mathlib.Data.Finset.Basic
 import Mathlib.Data.Finset.Card
 import Mathlib.Logic.Function.Basic
 import Mathlib.Algebra.Order.BigOperators.Group.Finset
 import Mathlib.Tactic.FinCases
-import SyntheticGameTheory.Unified
 
-namespace GeneralUnified
-
-open Unified (Sign Face cmpSign)
+namespace Base
 
 -- ================================================================
--- Section 1: Reuse Sign and Face from Unified
+-- Section 1: Sign type
 -- ================================================================
 
--- Sign, Sign.nonneg, Sign.flip, Sign.mul, cmpSign are imported from Unified
--- Face, Face.vertex, Face.full, Face.IsSubface, Face.ext are imported from Unified
+inductive Sign where
+  | pos : Sign
+  | neg : Sign
+  | zero : Sign
+  deriving DecidableEq, Repr
+
+namespace Sign
+
+instance : Fintype Sign :=
+  ⟨{.pos, .neg, .zero}, by intro x; cases x <;> simp⟩
+
+def flip : Sign → Sign
+  | pos => neg
+  | neg => pos
+  | zero => zero
+
+@[simp] theorem flip_pos : flip pos = neg := rfl
+@[simp] theorem flip_neg : flip neg = pos := rfl
+@[simp] theorem flip_zero : flip zero = zero := rfl
+@[simp] theorem flip_flip (s : Sign) : s.flip.flip = s := by cases s <;> rfl
+
+/-- `s.nonneg` means a ≥ b (s ∈ {pos, zero}). -/
+def nonneg : Sign → Prop
+  | pos => True
+  | zero => True
+  | neg => False
+
+instance (s : Sign) : Decidable s.nonneg := by cases s <;> simp [nonneg] <;> infer_instance
+
+@[simp] theorem nonneg_pos : pos.nonneg := trivial
+@[simp] theorem nonneg_zero : zero.nonneg := trivial
+
+theorem not_nonneg_neg : ¬neg.nonneg := id
+
+theorem nonneg_flip_of_not_nonneg {s : Sign} (h : ¬s.nonneg) : s.flip.nonneg := by
+  cases s <;> simp_all [nonneg, flip]
+
+theorem not_nonneg_flip_of_nonneg_of_ne_zero {s : Sign} (h : s.nonneg) (hz : s ≠ zero) :
+    ¬s.flip.nonneg := by
+  cases s <;> simp_all [nonneg, flip]
+
+/-- Multiplication of signs. Captures the sign of a product of reals. -/
+def mul : Sign → Sign → Sign
+  | zero, _ => zero
+  | _, zero => zero
+  | pos, s => s
+  | neg, s => s.flip
+
+@[simp] theorem mul_zero (s : Sign) : mul s zero = zero := by cases s <;> rfl
+@[simp] theorem zero_mul (s : Sign) : mul zero s = zero := by rfl
+@[simp] theorem mul_pos (s : Sign) : mul s pos = s := by cases s <;> rfl
+@[simp] theorem pos_mul (s : Sign) : mul pos s = s := by cases s <;> rfl
+@[simp] theorem neg_mul (s : Sign) : mul neg s = s.flip := by cases s <;> rfl
+
+theorem flip_mul (s t : Sign) : (mul s t).flip = mul s.flip t := by
+  cases s <;> cases t <;> rfl
+
+theorem mul_nonneg {s t : Sign} (hs : s.nonneg) (ht : t.nonneg) : (mul s t).nonneg := by
+  cases s <;> cases t <;> simp_all [mul, nonneg]
+
+theorem nonneg_mul_flip_of_not_nonneg {s t : Sign} (hs : ¬s.nonneg) (ht : ¬t.nonneg) :
+    (mul s t).nonneg := by
+  cases s <;> cases t <;> simp_all [mul, nonneg, flip]
+
+end Sign
+
+-- ================================================================
+-- Section 1b: Comparison sign
+-- ================================================================
+
+/-- Comparison sign of two naturals: pos if a < b, neg if a > b, zero if a = b.
+    Convention: cmpSign a b = pos means "b is better" (higher index preferred). -/
+def cmpSign (a b : ℕ) : Sign :=
+  if a < b then Sign.pos
+  else if b < a then Sign.neg
+  else Sign.zero
+
+@[simp] theorem cmpSign_self (a : ℕ) : cmpSign a a = Sign.zero := by
+  simp [cmpSign]
+
+theorem cmpSign_flip (a b : ℕ) : (cmpSign a b).flip = cmpSign b a := by
+  unfold cmpSign
+  split <;> (split <;> simp_all [Sign.flip] <;> omega)
+
+theorem cmpSign_nonneg_iff {a b : ℕ} : (cmpSign a b).nonneg ↔ a ≤ b := by
+  unfold cmpSign
+  split
+  · simp [Sign.nonneg]; omega
+  · split
+    · simp [Sign.nonneg]; omega
+    · simp [Sign.nonneg]; omega
+
+theorem cmpSign_trans {a b c : ℕ} (h1 : (cmpSign a b).nonneg) (h2 : (cmpSign b c).nonneg) :
+    (cmpSign a c).nonneg := by
+  rw [cmpSign_nonneg_iff] at *; omega
+
+-- ================================================================
+-- Section 1c: Faces (nonempty finite subsets)
+-- ================================================================
+
+@[reducible]
+def Face (V : Type*) [DecidableEq V] := { S : Finset V // S.Nonempty }
+
+namespace Face
+
+variable {V : Type*} [DecidableEq V]
+
+def vertex (v : V) : Face V :=
+  ⟨{v}, Finset.singleton_nonempty v⟩
+
+def full [Fintype V] [Nonempty V] : Face V :=
+  ⟨Finset.univ, Finset.univ_nonempty⟩
+
+/-- The mixture (union) of two faces. Represents mixing the strategies
+    in A with those in B. -/
+def mix (A B : Face V) : Face V :=
+  ⟨A.1 ∪ B.1, A.2.mono Finset.subset_union_left⟩
+
+theorem mix_comm (A B : Face V) : mix A B = mix B A :=
+  Subtype.ext (Finset.union_comm A.1 B.1)
+
+theorem mix_idem (A : Face V) : mix A A = A :=
+  Subtype.ext (Finset.union_self A.1)
+
+theorem mix_assoc (A B C : Face V) : mix (mix A B) C = mix A (mix B C) :=
+  Subtype.ext (Finset.union_assoc A.1 B.1 C.1)
+
+def IsSubface (A B : Face V) : Prop := A.1 ⊆ B.1
+
+instance (A B : Face V) : Decidable (IsSubface A B) :=
+  inferInstanceAs (Decidable (A.1 ⊆ B.1))
+
+@[ext]
+theorem ext {A B : Face V} (h : A.1 = B.1) : A = B := Subtype.ext h
+
+instance instFintype [Fintype V] : Fintype (Face V) := by
+  classical
+  exact Subtype.fintype _
+
+end Face
 
 -- ================================================================
 -- Section 2: Profile types
@@ -296,7 +432,7 @@ theorem nash_exists_sub_OD [Fintype I]
 -- ================================================================
 
 /-- Construct a SignGame from payoff functions. -/
-noncomputable def ofPayoffs [Fintype I]
+def ofPayoffs [Fintype I]
     (u : (i : I) → (∀ j, V j) → Int) : SignGame I V where
   sign i p a b :=
     let pa := Function.update p i a
@@ -337,18 +473,18 @@ end SignGame
 -- ================================================================
 
 /-- Helper: compute sign from two Ints -/
-private def intSign (a b : Int) : Sign :=
+def intSign (a b : Int) : Sign :=
   if a > b then .pos
   else if a = b then .zero
   else .neg
 
-private theorem intSign_refl (a : Int) : intSign a a = .zero := by
+theorem intSign_refl (a : Int) : intSign a a = .zero := by
   simp [intSign]
 
-private theorem intSign_antisym (a b : Int) : intSign a b = (intSign b a).flip := by
+theorem intSign_antisym (a b : Int) : intSign a b = (intSign b a).flip := by
   simp only [intSign, Sign.flip]; split_ifs <;> first | rfl | omega
 
-private theorem intSign_trans (a b c : Int) :
+theorem intSign_trans (a b c : Int) :
     (intSign a b).nonneg → (intSign b c).nonneg → (intSign a c).nonneg := by
   simp only [intSign, Sign.nonneg]; split_ifs <;> simp_all <;> omega
 
@@ -480,4 +616,177 @@ theorem coordGame3_not_nash_mixed :
     ¬coordGame3.IsPureNash (fun i : Fin 3 => if i = 0 then true else false) := by
   intro h; have := h 0 false; revert this; decide
 
-end GeneralUnified
+-- ================================================================
+-- Pedagogical examples
+-- ================================================================
+
+/-- The Prisoner's Dilemma has a unique Nash equilibrium at (D,D).
+    Here is the deviation graph: each non-Nash profile has a player
+    who can strictly improve by switching.
+
+    (C,C) ──player 0 deviates──→ (D,C)
+      │                            │
+    player 1 deviates          player 1 deviates
+      ↓                            ↓
+    (C,D) ──player 0 deviates──→ (D,D) ← Nash: no deviations out -/
+theorem genPD_unique_pureNash :
+    ∀ p : PureProfile (Fin 2) (fun _ : Fin 2 => Bool),
+    genPD.IsPureNash p ↔ p = (fun _ => false) := by
+  intro p
+  constructor
+  · intro hp
+    by_contra h
+    -- If p ≠ (fun _ => false), some player plays true (cooperates)
+    -- and can deviate to false (defect) for a better payoff
+    have : ∃ i, p i = true := by
+      by_contra hall; push_neg at hall
+      apply h; ext i; exact Bool.eq_false_iff.mpr (hall i)
+    obtain ⟨i, hi⟩ := this
+    have hpi := hp i false; have hpi' := hp i true
+    fin_cases i <;> (cases h0 : p 0 <;> cases h1 : p 1 <;>
+      simp_all [genPD, game2x2, intSign, Sign.nonneg])
+  · rintro rfl; exact genPD_nash_DD
+
+/-- Matching Pennies: the only Nash equilibrium is the fully mixed profile
+    where both players play {H, T}. We show:
+    (1) No pure profile is Nash (genMP_no_pureNash above)
+    (2) The fully mixed profile IS Nash -/
+theorem genMP_mixed_nash : genMP.IsNash (fun _ : Fin 2 => Face.full (V := Bool)) := by
+  intro i A
+  -- Need: ¬StrictDev i σ A where σ = fun _ => full
+  -- StrictDev = DevFaceLE i σ A (σ i) ∧ ¬DevFaceLE i σ (σ i) A
+  -- DevFaceLE i σ A {true, false} means:
+  --   ∀ a ∈ A, ∀ p (opponents play anything), ∀ b ∈ {T,F}, sign(a,b) ≥ 0
+  -- This fails: for any a, there's an opponent choice making !a beat a.
+  intro ⟨hfwd, _⟩
+  obtain ⟨a, ha⟩ := A.2
+  -- a ∈ A, so hfwd gives: sign(a, b) ≥ 0 for all opponent choices and b ∈ {T,F}
+  -- Take b = !a and two different opponents to get a contradiction
+  have h1 := hfwd a ha (fun _ => true) (fun _ _ => Finset.mem_univ _)
+    (!a) (Finset.mem_univ _)
+  have h2 := hfwd a ha (fun _ => false) (fun _ _ => Finset.mem_univ _)
+    (!a) (Finset.mem_univ _)
+  -- Each case (i=0/1, a=T/F) gives contradictory sign constraints
+  fin_cases i <;> cases a <;> simp_all [genMP, game2x2, intSign, Sign.nonneg]
+
+/-- The DevFaceLE ordering is partial on mixed profiles: in Matching Pennies,
+    neither {H} nor {T} dominates the other when the opponent mixes. -/
+theorem genMP_partial_order :
+    let σ : Profile (Fin 2) (fun _ : Fin 2 => Bool) := fun _ => Face.full
+    ¬genMP.DevFaceLE 0 σ (Face.vertex true) (Face.vertex false) ∧
+    ¬genMP.DevFaceLE 0 σ (Face.vertex false) (Face.vertex true) := by
+  refine ⟨fun h => ?_, fun h => ?_⟩
+  · -- H doesn't dominate T: when opponent plays T (false), T beats H for player 0
+    have := h true (Finset.mem_singleton_self _)
+      (fun _ => false) (fun _ _ => Finset.mem_univ _)
+      false (Finset.mem_singleton_self _)
+    simp_all [genMP, game2x2, intSign, Sign.nonneg]
+  · -- T doesn't dominate H: when opponent plays H (true), H beats T for player 0
+    have := h false (Finset.mem_singleton_self _)
+      (fun _ => true) (fun _ _ => Finset.mem_univ _)
+      true (Finset.mem_singleton_self _)
+    simp_all [genMP, game2x2, intSign, Sign.nonneg]
+
+-- ================================================================
+-- Readable game constructors (for the article)
+-- ================================================================
+
+/-- Build a symmetric 2-player game from a ranking function.
+    rank(myAction, oppAction) assigns a preference rank to each outcome.
+    Higher rank = more preferred. Only the ordering matters — any two
+    ranking functions with the same ordering produce the same game. -/
+def symGame2x2 (rank : Bool → Bool → ℕ) :
+    SignGame (Fin 2) (fun _ : Fin 2 => Bool) where
+  sign i p a b :=
+    let opp := p (1 - i)
+    cmpSign (rank b opp) (rank a opp)
+  sign_refl i p a := by simp [cmpSign_self]
+  sign_antisym i p a b := by rw [cmpSign_flip]
+  sign_trans i p a b c h1 h2 := cmpSign_trans h2 h1
+  sign_irrel i p q a b h := by
+    have : p (1 - i) = q (1 - i) := h (1 - i) (by intro heq; exact absurd heq (by omega))
+    simp only [this]
+
+/-- Build an asymmetric 2-player game from per-player ranking functions. -/
+def game2x2_rank (rank₀ rank₁ : Bool → Bool → ℕ) :
+    SignGame (Fin 2) (fun _ : Fin 2 => Bool) where
+  sign i p a b :=
+    let opp := p (1 - i)
+    if (i : ℕ) = 0 then cmpSign (rank₀ b opp) (rank₀ a opp)
+    else cmpSign (rank₁ b opp) (rank₁ a opp)
+  sign_refl i p a := by split_ifs <;> simp [cmpSign_self]
+  sign_antisym i p a b := by split_ifs <;> rw [cmpSign_flip]
+  sign_trans i p a b c h1 h2 := by
+    simp only [] at *; split_ifs at * <;> exact cmpSign_trans h2 h1
+  sign_irrel i p q a b h := by
+    have : p (1 - i) = q (1 - i) := h (1 - i) (by intro heq; exact absurd heq (by omega))
+    simp only [this]
+
+-- ================================================================
+-- Prisoner's Dilemma (readable version)
+-- ================================================================
+
+/-- Prisoner's Dilemma ranking. C = true, D = false.
+    Each player ranks outcomes (from their own perspective):
+      CD < DD < CC < DC
+    "If I cooperate and they defect, that's the worst.
+     If we both defect, that's bad but not the worst.
+     If we both cooperate, that's good.
+     If I defect and they cooperate, that's the best." -/
+def pd_rank (me opp : Bool) : ℕ :=
+  match me, opp with
+  | true,  false => 0   -- I cooperate, they defect (worst)
+  | false, false => 1   -- both defect
+  | true,  true  => 2   -- both cooperate
+  | false, true  => 3   -- I defect, they cooperate (best)
+
+/-- The PD is symmetric: both players have the same ranking. -/
+def genPD' := symGame2x2 pd_rank
+
+theorem genPD'_nash_DD : genPD'.IsPureNash (fun _ => false) := by
+  intro i v; fin_cases i <;> cases v <;> decide
+
+theorem genPD'_not_nash_CC : ¬genPD'.IsPureNash (fun _ => true) := by
+  intro h; have := h 0 false; revert this; decide
+
+/-- The numbers are just labels for the ranking.
+    Any other numbers with the same ordering produce the same game. -/
+def pd_rank_alt (me opp : Bool) : ℕ :=
+  match me, opp with
+  | true,  false => 10
+  | false, false => 20
+  | true,  true  => 30
+  | false, true  => 40
+
+theorem pd_same_game :
+    (symGame2x2 pd_rank).sign = (symGame2x2 pd_rank_alt).sign := by
+  ext i p a b
+  simp only [symGame2x2, pd_rank, pd_rank_alt, cmpSign]
+  cases a <;> cases b <;> cases (p (1 - i)) <;> simp
+
+-- ================================================================
+-- Matching Pennies (readable version)
+-- ================================================================
+
+/-- Matching Pennies. H = true, T = false.
+    Player 0 wants to match: HH and TT are good, HT and TH are bad.
+    Player 1 wants to differ: HT and TH are good, HH and TT are bad. -/
+def genMP' := game2x2_rank
+  (fun me opp => match me, opp with  -- P0 wants to match
+    | true,  true  => 1
+    | false, false => 1
+    | _,     _     => 0)
+  (fun me opp => match me, opp with  -- P1 wants to differ
+    | true,  false => 1
+    | false, true  => 1
+    | _,     _     => 0)
+
+theorem genMP'_no_pureNash :
+    ∀ p, ¬genMP'.IsPureNash p := by
+  intro p hp
+  have h0t := hp 0 true; have h0f := hp 0 false
+  have h1t := hp 1 true; have h1f := hp 1 false
+  simp only [genMP', game2x2_rank, SignGame.IsPureNash, cmpSign, Sign.nonneg] at *
+  cases h0 : p 0 <;> cases h1 : p 1 <;> simp_all
+
+end Base
