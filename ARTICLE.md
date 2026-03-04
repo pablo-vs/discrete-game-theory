@@ -324,7 +324,7 @@ theorem OutsideDominated_preserved_other {i j : I} (hij : j ≠ i)
 **Termination:** Profile size is a natural number that decreases each step. So the algorithm terminates, producing a Nash equilibrium.
 
 ```lean
-private theorem nash_exists_aux [Fintype I]
+theorem nash_exists_of_OD [Fintype I]
     (σ : Profile I V)
     (h_od : ∀ i, G.OutsideDominated i σ) :
     ∃ τ, G.IsNash τ := by
@@ -334,7 +334,7 @@ private theorem nash_exists_aux [Fintype I]
     obtain ⟨i₀, A, hA⟩ := h
     obtain ⟨A', hdev, hsub, hne⟩ := exists_restrictingStrictDev G (h_od i₀) hA
     have hdec := profileSize_decreases hsub hne
-    exact nash_exists_aux (Function.update σ i₀ A') (fun j => by
+    exact nash_exists_of_OD (Function.update σ i₀ A') (fun j => by
       by_cases hij : j = i₀
       · subst hij; exact OutsideDominated_preserved G (h_od j) hsub hdev.1
       · exact OutsideDominated_preserved_other G hij (h_od j) hsub)
@@ -346,7 +346,7 @@ The full theorem follows by starting from the full profile:
 ```lean
 theorem nash_exists [Fintype I] [∀ i, Fintype (V i)] [∀ i, Nonempty (V i)] :
     ∃ σ, G.IsNash σ :=
-  nash_exists_aux G (fun _ => Face.full) (fun i => OutsideDominated_maximal G i)
+  nash_exists_of_OD G (fun _ => Face.full) (fun i => OutsideDominated_maximal G i)
 ```
 
 ### A 3-player example

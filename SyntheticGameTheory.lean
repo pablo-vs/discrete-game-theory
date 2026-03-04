@@ -2,3 +2,4 @@ import SyntheticGameTheory.Base
 import SyntheticGameTheory.Refinement
 import SyntheticGameTheory.SelfSimilarity
 import SyntheticGameTheory.Invariance
+import SyntheticGameTheory.Compact
