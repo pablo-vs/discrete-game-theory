@@ -1,4 +1,5 @@
 import SyntheticGameTheory.Base
+import SyntheticGameTheory.Examples
 import SyntheticGameTheory.Refinement
 import SyntheticGameTheory.SelfSimilarity
 import SyntheticGameTheory.Invariance

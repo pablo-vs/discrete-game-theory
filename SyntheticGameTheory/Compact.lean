@@ -15,8 +15,87 @@ and stays within it, finding a Nash that's valid for the full game.
 
 namespace Base
 
+-- ================================================================
+-- Section 0: MixtureAlgebra & abstract Game
+-- ================================================================
+
+/-- An idempotent commutative monoid — the algebraic structure of mixing strategies.
+    mix A B represents "some distribution supported on A ∪ B" without specifying which. -/
+class MixtureAlgebra (S : Type*) where
+  mix : S → S → S
+  mix_comm : ∀ a b, mix a b = mix b a
+  mix_idem : ∀ a, mix a a = a
+  mix_assoc : ∀ a b c, mix (mix a b) c = mix a (mix b c)
+
+instance {V : Type*} [DecidableEq V] : MixtureAlgebra (Face V) where
+  mix := Face.mix
+  mix_comm := Face.mix_comm
+  mix_idem := Face.mix_idem
+  mix_assoc := Face.mix_assoc
+
+/-- Abstract game: the most general notion of strategic interaction.
+    Each player has a strategy space with mixture, and a contextual preference
+    relation: `pref i σ s t` means "player i, when opponents play σ,
+    weakly prefers strategy s over t."
+
+    The preference is a transitive relation but not necessarily reflexive
+    (self-preference can fail for mixed strategies) or total (incomparable
+    strategies arise naturally from universal quantification over opponents). -/
+structure Game (I : Type*) where
+  S : I → Type*
+  mixture : ∀ i, MixtureAlgebra (S i)
+  pref : (i : I) → (∀ j, S j) → S i → S i → Prop
+  pref_trans : ∀ i σ (s t u : S i), pref i σ s t → pref i σ t u → pref i σ s u
+
+namespace Game
+
+variable {I : Type*} (G : Game I)
+
+/-- Player i strictly prefers s over t in context σ: s ≥ t but not t ≥ s. -/
+def StrictPref (i : I) (σ : ∀ j, G.S j) (s t : G.S i) : Prop :=
+  G.pref i σ s t ∧ ¬G.pref i σ t s
+
+/-- A profile is Nash if no player has a strategy strictly preferred to their current one. -/
+def IsNash (σ : ∀ j, G.S j) : Prop :=
+  ∀ i s, ¬G.StrictPref i σ s (σ i)
+
+end Game
+
+-- ================================================================
+-- Section 0b: SignGame.toGame bridge
+-- ================================================================
+
 variable {I : Type*} [DecidableEq I] {V : I → Type*} [∀ i, DecidableEq (V i)]
 variable (G : SignGame I V)
+
+namespace SignGame
+
+/-- Construct an abstract Game from a SignGame.
+    Strategies are faces, mixture is union, preference is DevFaceLE. -/
+def toGame : Game I where
+  S := fun i => Face (V i)
+  mixture := fun _ => inferInstance
+  pref := fun i σ A B => G.DevFaceLE i σ A B
+  pref_trans := fun _ _ _ _ _ hAB hBC => DevFaceLE.trans G hAB hBC
+
+omit [DecidableEq I] in
+/-- StrictPref in the abstract Game agrees with StrictDev in the SignGame. -/
+theorem toGame_strictPref_iff {i : I} {σ : Profile I V} {A : Face (V i)} :
+    G.toGame.StrictPref i σ A (σ i) ↔ G.StrictDev i σ A := by
+  rfl
+
+omit [DecidableEq I] in
+/-- IsNash in the abstract Game agrees with IsNash in the SignGame. -/
+theorem toGame_isNash_iff {σ : Profile I V} :
+    G.toGame.IsNash σ ↔ G.IsNash σ := by
+  rfl
+
+/-- Nash existence lifts to the abstract Game. -/
+theorem toGame_nash_exists [Fintype I] [∀ i, Fintype (V i)] [∀ i, Nonempty (V i)] :
+    ∃ σ, G.toGame.IsNash σ :=
+  G.nash_exists
+
+end SignGame
 
 -- ================================================================
 -- Section 1: Restriction to a core

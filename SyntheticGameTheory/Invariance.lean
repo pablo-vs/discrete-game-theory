@@ -33,8 +33,9 @@ open Refinement (gridSize edgeCount)
 
 variable {I : Type*} [DecidableEq I] {V : I → Type*} [∀ i, DecidableEq (V i)]
 
-set_option linter.unusedSectionVars false in
+omit [DecidableEq I] [∀ i, DecidableEq (V i)] in
 /-- Two sign games are equal if and only if their sign functions agree. -/
+@[ext]
 theorem SignGame.ext' {G H : SignGame I V}
     (h : ∀ i p a b, G.sign i p a b = H.sign i p a b) : G = H := by
   have hsign : G.sign = H.sign :=
@@ -45,6 +46,7 @@ theorem SignGame.ext' {G H : SignGame I V}
 -- Section 2: Level-0 ordinal invariance
 -- ================================================================
 
+omit [∀ i, DecidableEq (V i)] in
 /-- Applying per-player strictly monotone transformations to payoffs
     does not change the sign game. This is the ordinal invariance theorem:
     Nash equilibria at level 0 depend only on the ordinal ranking
@@ -80,6 +82,7 @@ theorem IsNash_invariant_strictMono [Fintype I]
     (SignGame.ofPayoffs (fun i q => f i (u i q))).IsNash σ := by
   rw [ofPayoffs_strictMono_invariant u f hf]; exact hN
 
+omit [∀ i, DecidableEq (V i)] in
 /-- Pure Nash equilibria are invariant under per-player strictly monotone
     payoff transformations. -/
 theorem IsPureNash_invariant_strictMono [Fintype I]

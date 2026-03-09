@@ -104,31 +104,22 @@ We'll prove this in general shortly — it's one of the main theorems.
 
 A *deviation* for player $i$ is a switch from their current action to some alternative that's at least as good. A *strict deviation* is one where the alternative is strictly better — the player weakly prefers the new action over the old one, but not vice versa.
 
-```lean
-def StrictDev (i : I) (σ : Profile I V) (A : Face (V i)) : Prop :=
-  G.DevFaceLE i σ A (σ i) ∧ ¬G.DevFaceLE i σ (σ i) A
-```
-
-Player $i$ has a strict deviation to $A$ from profile $\sigma$ when $A \geq_i^\sigma \sigma_i$ but $\sigma_i \not\geq_i^\sigma A$.
-
 For example, in the Prisoner's Dilemma the graph of possible strict deviations looks like this:
 
 [Diagram: The four pure profiles arranged in a square. Arrows point from (C,C) to (D,C) labeled "player 0 deviates", from (C,C) to (C,D) labeled "player 1 deviates", from (D,C) to (D,D) labeled "player 1 deviates", and from (C,D) to (D,D) labeled "player 0 deviates". (D,D) has no outgoing arrows.]
 
 No matter where you start, the players end up at (D,D), where neither can improve by switching. This is a Nash equilibrium: a profile where no player has a *strict unilateral deviation* — a way to switch their own action and get a strictly better outcome. In the case of PD, only (D,D) is a Nash equilibrium.
 
-A profile is Nash if no player has a strict deviation. This is the same definition as in standard game theory, just stated in terms of preference orderings instead of numerical payoffs.
+So we define a pure profile as a Nash equilibrium if no player has a strict deviation, that is its comparison sign with any other actions of the player is nonnegative. This is the same definition as in standard game theory, just stated in terms of preference orderings instead of numerical payoffs.
 
 ```lean
-def IsNash (σ : Profile I V) : Prop :=
-  ∀ (i : I) (A : Face (V i)), ¬G.StrictDev i σ A
+def IsPureNash (p : PureProfile I V) : Prop :=
+  ∀ (i : I) (v : V i), (G.sign i p (p i) v).nonneg
 
 theorem genPD_unique_pureNash :
     ∀ p : PureProfile (Fin 2) (fun _ : Fin 2 => Bool),
     genPD.IsPureNash p ↔ p = (fun _ => false)
 ```
-
-$$\text{IsNash}(\sigma) \;\;\iff\;\; \forall i \in I,\; \forall A \in \text{Face}(V_i),\quad \neg\big(A >_i^\sigma \sigma_i\big)$$
 
 
 ## The problem with pure strategies
@@ -149,13 +140,17 @@ def genMP := game2x2_rank
 theorem genMP_no_pureNash : ∀ p, ¬genMP.IsPureNash p
 ```
 
-Whatever pure profile you pick, one player wants to switch. The best-response "map" cycles: H→T→H→T→... The standard solution is to let players randomize their actions.
+Whatever pure profile you pick, one player wants to switch. The response "map" cycles: H→T→H→T→... The standard solution is to let players randomize their actions.
 
 ## Mixed strategies as faces
 
-In standard game theory, players can play mixed strategies, a mixed strategy is a probability distribution over actions. The set of all mixed strategies for a player with $n$ actions forms a simplex $\Delta^{n-1}$ — a convex body in $\mathbb{R}^{n-1}$.
+In standard game theory, players can play a mixed strategy: a probability distribution over actions. The set of all mixed strategies for a player with $n$ actions forms a simplex $\Delta^{n-1}$ — a convex body in $\mathbb{R}^{n-1}$ which looks like a higher-dimensional version of a triangle. The vertices are the actions, also called pure strategies, the interior points are the mixtures.
 
-We do something analogous but discrete. A *mixed strategy* is just a nonempty subset of actions — a *face* of the simplex. The face $\{a, b\}$ represents "some distribution supported on $a$ and $b$," without specifying which one. The key operations are:
+We do something analogous but discrete. A *mixed strategy* is just a nonempty subset of actions — a *face* of the simplex. The face $\{a, b\}$ represents "some distribution supported on $a$ and $b$," without specifying which one.
+
+[Diagram: A triangle with vertices {a}, {b}, {c}. The edges are {a,b}, {b,c}, {a,c}. The interior is {a,b,c}. Label this "The discrete simplex (face lattice)" and contrast with the continuous simplex — a filled triangle — labeled "The continuous simplex".]
+
+A vertex `{a}` is a pure strategy. The full face is the maximally mixed strategy. Mixing is just set union, and it satisfies the expected algebraic properties — it's commutative, associative, and idempotent:
 
 ```lean
 def Face (V : Type*) [DecidableEq V] := { S : Finset V // S.Nonempty }
@@ -173,21 +168,13 @@ def mix (A B : Face V) : Face V :=
 $$\text{Face}(V) = \{ S \subseteq V \mid S \neq \emptyset \}$$
 $$\text{vertex}(v) = \{v\} \qquad \text{full} = V \qquad \text{mix}(A, B) = A \cup B$$
 
-A vertex `{a}` is a pure strategy. The full face is the maximally mixed strategy. Mixing is just set union, and it satisfies the expected algebraic properties — it's commutative, associative, and idempotent:
-
 ```lean
 theorem mix_comm (A B : Face V) : mix A B = mix B A
 theorem mix_idem (A : Face V) : mix A A = A
 theorem mix_assoc (A B C : Face V) : mix (mix A B) C = mix A (mix B C)
 ```
 
-Compare this to the continuous simplex. In the standard theory, mixing two strategies gives a convex combination — every distribution between them. Here, mixing two faces gives their union — every distribution supported on either. The discrete simplex for a player with three actions looks like:
-
-[Diagram: A triangle with vertices {a}, {b}, {c}. The edges are {a,b}, {b,c}, {a,c}. The interior is {a,b,c}. Label this "The discrete simplex (face lattice)" and contrast with the continuous simplex — a filled triangle — labeled "The continuous simplex".]
-
-The idempotence $\text{mix}(A, A) = A$ is the key difference from the continuous case. In the standard theory, mixing a strategy with itself gives the same strategy — but "mixing" means taking convex combinations, which is a richer operation. Here, $\text{mix}$ is just union, so $\text{mix}(A, A) = A$ trivially. We're keeping track of *which actions are in play*, not the exact probabilities.
-
-A profile is now a choice of face for each player:
+We were working with pure profiles so far, in which every player plays a pure action. A general profile is now a choice of face for each player:
 
 ```lean
 abbrev Profile := ∀ i : I, Face (V i)
@@ -199,12 +186,12 @@ $$\sigma \in \prod_{i \in I} \text{Face}(V_i)$$
 
 In standard game theory, players compare mixed strategies using expected utility. If I'm considering playing distribution $a$ versus distribution $b$ against opponent distribution $p$, I compute the expected payoff of each against every possible opponent action, weighted by their probability, and compare.
 
-We need an analogous comparison for faces. The idea is conservative: face $A$ dominates face $B$ for player $i$ (written $A \geq B$) only when *every* action in $A$ is at least as good as *every* action in $B$, no matter what the opponents do within their current faces.
+We need an analogous comparison for faces. The idea is conservative: face $A$ dominates face $B$ for player $i$ (written $A \geq B$) only when *every* action in $A$ is at least as good as *every* action in $B$, no matter what the opponents do within their current faces. The condition "opponents play within their faces" is named `ConsistentAt σ i p` — it says every opponent $j \neq i$ has $p_j \in \sigma_j$.
 
 ```lean
 def DevFaceLE (i : I) (σ : Profile I V) (A B : Face (V i)) : Prop :=
   ∀ a ∈ A.1, ∀ p : PureProfile I V,
-    (∀ j, j ≠ i → p j ∈ (σ j).1) → ∀ b ∈ B.1, (G.sign i p a b).nonneg
+    ConsistentAt σ i p → ∀ b ∈ B.1, (G.sign i p a b).nonneg
 ```
 
 $$A \geq_i^\sigma B \;\;\iff\;\; \forall a \in A,\; \forall p \in \textstyle\prod_{j \neq i} \sigma_j,\; \forall b \in B,\quad s_i(p, a, b) \geq 0$$
@@ -226,11 +213,26 @@ theorem genMP_partial_order :
 
 Why? When the opponent plays Heads, player 0 prefers Heads. When the opponent plays Tails, player 0 prefers Tails. Since the opponent's face includes both, neither dominates — the comparison is ambiguous. This partiality is exactly what we need: it means **mixing creates incomparability, and incomparability breaks cycles.**
 
+So we can define strict deviations for mixed profiles as well, and Nash equilibria are just the absence of any strict deviation for any player:
+
+```lean
+def StrictDev (i : I) (σ : Profile I V) (A : Face (V i)) : Prop :=
+  G.DevFaceLE i σ A (σ i) ∧ ¬G.DevFaceLE i σ (σ i) A
+
+def IsNash (σ : ∀ j, G.S j) : Prop :=
+  ∀ i s, ¬G.StrictPref i σ s (σ i)
+```
+Player $i$ has a strict deviation to $A$ from profile $\sigma$ when $A \geq_i^\sigma \sigma_i$ but $\sigma_i \not\geq_i^\sigma A$.
+
+$$\text{IsNash}(\sigma) \;\;\iff\;\; \forall i \in I,\; \forall A \in \text{Face}(V_i),\quad \neg\big(A >_i^\sigma \sigma_i\big)$$
+
 In the Matching Pennies deviation graph among pure profiles, we saw a cycle: H beats T beats H beats T... But when both players mix, neither H nor T strictly dominates the other. The cycle dissolves into incomparability. And the fully mixed profile is Nash:
 
 ```lean
 theorem genMP_mixed_nash : genMP.IsNash (fun _ : Fin 2 => Face.full (V := Bool))
 ```
+
+
 
 ## Existence of Nash equilibria
 
@@ -281,7 +283,7 @@ $$|\sigma| = \sum_{i \in I} |\sigma_i|$$
 **Start:** The full profile — every player plays every action — is vacuously OD (there are no outside actions to check).
 
 ```lean
-theorem OutsideDominated_maximal (i : I)
+theorem OutsideDominated.maximal (i : I)
     [∀ j, Fintype (V j)] [∀ j, Nonempty (V j)] :
     G.OutsideDominated i (fun _ => Face.full) :=
   fun v hv => absurd (Finset.mem_univ v) hv
@@ -308,13 +310,13 @@ theorem profileSize_decreases [Fintype I] {i : I} {σ : Profile I V} {A : Face (
 **Preservation of OD:** Crucially, the OD invariant is preserved across the update. For the player $i$ who just changed, this holds because $A'$ dominates $\sigma_i$, so it certainly dominates the actions outside $\sigma_i$ (which were already dominated). For other players $j \neq i$, this holds by antitonicity: shrinking player $i$'s face only makes domination *easier* for other players (fewer opponent actions to worry about).
 
 ```lean
-theorem OutsideDominated_preserved {i : I} {σ : Profile I V} {A : Face (V i)}
+theorem OutsideDominated.preserved {i : I} {σ : Profile I V} {A : Face (V i)}
     (h_inv : G.OutsideDominated i σ)
     (h_sub : Face.IsSubface A (σ i))
     (h_dev : G.DevFaceLE i σ A (σ i)) :
     G.OutsideDominated i (Function.update σ i A)
 
-theorem OutsideDominated_preserved_other {i j : I} (hij : j ≠ i)
+theorem OutsideDominated.preserved_other {i j : I} (hij : j ≠ i)
     {σ : Profile I V} {A : Face (V i)}
     (h_inv : G.OutsideDominated j σ)
     (h_sub : Face.IsSubface A (σ i)) :
@@ -336,8 +338,8 @@ theorem nash_exists_of_OD [Fintype I]
     have hdec := profileSize_decreases hsub hne
     exact nash_exists_of_OD (Function.update σ i₀ A') (fun j => by
       by_cases hij : j = i₀
-      · subst hij; exact OutsideDominated_preserved G (h_od j) hsub hdev.1
-      · exact OutsideDominated_preserved_other G hij (h_od j) hsub)
+      · subst hij; exact OutsideDominated.preserved G (h_od j) hsub hdev.1
+      · exact OutsideDominated.preserved_other G hij (h_od j) hsub)
   termination_by profileSize σ
 ```
 
@@ -346,7 +348,7 @@ The full theorem follows by starting from the full profile:
 ```lean
 theorem nash_exists [Fintype I] [∀ i, Fintype (V i)] [∀ i, Nonempty (V i)] :
     ∃ σ, G.IsNash σ :=
-  nash_exists_of_OD G (fun _ => Face.full) (fun i => OutsideDominated_maximal G i)
+  nash_exists_of_OD G (fun _ => Face.full) (fun i => OutsideDominated.maximal G i)
 ```
 
 ### A 3-player example

@@ -16,6 +16,7 @@ import SyntheticGameTheory.Base
 namespace Refinement
 
 open Base (Sign Face cmpSign)
+open Base.SignGame (DevFaceLE OutsideDominated)
 
 -- ================================================================
 -- Layer A: Betweenness and Convex Closure
@@ -41,13 +42,16 @@ variable {V : Type*} [DecidableEq V] [Fintype V] [Betweenness V]
 def IsConvex (S : Finset V) : Prop :=
   ∀ a ∈ S, ∀ b ∈ S, ∀ c, Betweenness.between c a b → c ∈ S
 
+/-- Decidability of IsConvex, needed for computable convClosure. -/
+instance IsConvex.decidable (S : Finset V) : Decidable (IsConvex S) :=
+  inferInstanceAs (Decidable (∀ a ∈ S, ∀ b ∈ S, ∀ c, Betweenness.between c a b → c ∈ S))
+
 /-- The convex closure: smallest convex superset.
     Defined as the intersection of all convex supersets within Finset.univ. -/
-noncomputable def convClosure (F : Face V) : Face V := by
-  classical
-  refine ⟨Finset.univ.filter (fun v => ∀ S : Finset V, F.val ⊆ S → IsConvex S → v ∈ S), ?_⟩
-  obtain ⟨x, hx⟩ := F.property
-  exact ⟨x, Finset.mem_filter.mpr ⟨Finset.mem_univ x, fun S hFS _ => @hFS x hx⟩⟩
+def convClosure (F : Face V) : Face V :=
+  ⟨Finset.univ.filter (fun v => ∀ S : Finset V, F.val ⊆ S → IsConvex S → v ∈ S),
+   let ⟨x, hx⟩ := F.property
+   ⟨x, Finset.mem_filter.mpr ⟨Finset.mem_univ x, fun S hFS _ => hFS hx⟩⟩⟩
 
 -- ----------------------------------------------------------------
 -- Convex closure API
@@ -196,8 +200,10 @@ theorem fine_between_gridEmbed (k : ℕ) (v : Fin (gridSize (k+1))) (a : Fin (gr
       grid_omega
     }
 
-instance gridSize_nonempty (k : ℕ) : Nonempty (Fin (gridSize k)) :=
+instance gridSize_inhabited (k : ℕ) : Inhabited (Fin (gridSize k)) :=
   ⟨⟨0, Nat.succ_pos _⟩⟩
+
+instance gridSize_nonempty (k : ℕ) : Nonempty (Fin (gridSize k)) := ⟨default⟩
 
 end FinGrid
 
@@ -242,7 +248,7 @@ structure GeneralSignTower (I : Type*) [DecidableEq I] [Fintype I] where
   V : ℕ → I → Type*
   instDecEq : ∀ k i, DecidableEq (V k i)
   instFintype : ∀ k i, Fintype (V k i)
-  instNonempty : ∀ k i, Nonempty (V k i)
+  instInhabited : ∀ k i, Inhabited (V k i)
   betw : ∀ k i, Betweenness (V k i)
   game : (k : ℕ) → Base.SignGame I (V k)
   embed : ∀ k i, V k i → V (k+1) i
@@ -289,21 +295,22 @@ variable (T : GeneralSignTower I)
 -- Provide instances from the tower
 instance instDE (k : ℕ) (i : I) : DecidableEq (T.V k i) := T.instDecEq k i
 instance instFT (k : ℕ) (i : I) : Fintype (T.V k i) := T.instFintype k i
-instance instNE (k : ℕ) (i : I) : Nonempty (T.V k i) := T.instNonempty k i
+instance instInh (k : ℕ) (i : I) : Inhabited (T.V k i) := T.instInhabited k i
+instance instNE (k : ℕ) (i : I) : Nonempty (T.V k i) := ⟨default⟩
 instance instBW (k : ℕ) (i : I) : Betweenness (T.V k i) := T.betw k i
 
 -- ----------------------------------------------------------------
 -- Convex closure for profiles (close each player's face)
 -- ----------------------------------------------------------------
 
-noncomputable def convCloseProfile (k : ℕ)
+def convCloseProfile (k : ℕ)
     (σ : Base.Profile I (T.V k)) :
     Base.Profile I (T.V k) :=
   fun i => @convClosure (T.V k i) (T.instDecEq k i) (T.instFintype k i)
     (T.betw k i) (σ i)
 
 -- Helper: abbreviation for convClosure at a specific tower level/player
-noncomputable def cc (k : ℕ) (i : I) (F : Face (T.V k i)) : Face (T.V k i) :=
+def cc (k : ℕ) (i : I) (F : Face (T.V k i)) : Face (T.V k i) :=
   @convClosure (T.V k i) (T.instDecEq k i) (T.instFintype k i) (T.betw k i) F
 
 -- ================================================================
@@ -478,8 +485,8 @@ theorem IsNash_convCloseProfile (k : ℕ)
     -- From hSD.1: DevFaceLE i τ A (cc(σ i))
     -- right_mono with σ i ⊆ cc(σ i): DevFaceLE i τ A (σ i)
     -- antitone with σ j ⊆ τ j: DevFaceLE i σ A (σ i)
-    exact (T.game k).DevFaceLE_antitone (fun j _ => face_sub_closure (σ j))
-      ((T.game k).DevFaceLE_right_mono (face_sub_closure (σ i)) hSD.1)
+    exact DevFaceLE.antitone (T.game k) (fun j _ => face_sub_closure (σ j))
+      (DevFaceLE.mono_right (T.game k) (face_sub_closure (σ i)) hSD.1)
   · -- Backward: ¬DevFaceLE i σ (σ i) A
     intro hback
     exact hSD.2 (T.DevFaceLE_convCloseProfile k (T.DevFaceLE_convClosure_left k hback))
@@ -542,7 +549,7 @@ theorem DevFaceLE_embed (k : ℕ) {i : I}
   -- Build coarse profile q from preimages
   classical
   set q : Base.PureProfile I (T.V k) :=
-    fun m => if hm : m = i then Classical.choice (T.instNonempty k m)
+    fun m => if hm : m = i then (T.instInhabited k m).default
              else (h_opp m hm).choose
   -- sign_irrel: replace p' by embed(q)
   have hirrel : (T.game (k+1)).sign i p' (T.embed k i a) (T.embed k i b) =
@@ -647,7 +654,7 @@ theorem nash_refining_sequence (k : ℕ) :
   | zero =>
     -- Start from full profile, get Nash+OD, close
     have h_od_full : ∀ i, (T.game 0).OutsideDominated i (fun _ => Face.full) :=
-      fun i => (T.game 0).OutsideDominated_maximal i
+      fun i => OutsideDominated.maximal (T.game 0) i
     obtain ⟨τ, hτN, _, hτ_od⟩ := (T.game 0).nash_exists_sub_OD (fun _ => Face.full) h_od_full
     exact ⟨T.convCloseProfile 0 τ,
       T.IsNash_convCloseProfile 0 hτN,

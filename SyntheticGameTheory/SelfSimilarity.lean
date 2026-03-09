@@ -117,7 +117,7 @@ def restrictGame {W : I → Type*} [∀ i, DecidableEq (W i)]
   sign_irrel i p q a b h := G.sign_irrel i _ _ _ _ (fun j hj => by
     show f j (p j) = f j (q j); rw [h j hj])
 
-set_option linter.unusedSectionVars false in
+omit [Fintype I] [DecidableEq I] [∀ i, DecidableEq (V i)] in
 theorem restrictGame_sign {W : I → Type*} [∀ i, DecidableEq (W i)]
     {G : Base.SignGame I V} {f : ∀ i, W i → V i}
     {i : I} {p : Base.PureProfile I W} {a b : W i} :
@@ -153,11 +153,11 @@ variable {I : Type*} [DecidableEq I] [Fintype I]
     actions and their opponents' actions. When we fix the player's level
     to κ i, the opponents' types don't matter — any consistent
     pure profile will give the same sign. -/
-noncomputable def multiLevelGame (T : GeneralSignTower I) (κ : I → ℕ) :
+def multiLevelGame (T : GeneralSignTower I) (κ : I → ℕ) :
     Base.SignGame I (fun i => T.V (κ i) i) where
   sign i p a b := (T.game (κ i)).sign i
     (fun j => if h : κ j = κ i then h ▸ p j
-              else Classical.choice (T.instNonempty (κ i) j))
+              else (T.instInhabited (κ i) j).default)
     a b
   sign_refl i p a := (T.game (κ i)).sign_refl i _ _
   sign_antisym i p a b := (T.game (κ i)).sign_antisym i _ _ _

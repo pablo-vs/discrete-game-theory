@@ -123,13 +123,19 @@ variable {V : Type*} [DecidableEq V]
 def vertex (v : V) : Face V :=
   ⟨{v}, Finset.singleton_nonempty v⟩
 
+@[simp] theorem vertex_val {v : V} : (vertex v : Face V).1 = {v} := rfl
+
 def full [Fintype V] [Nonempty V] : Face V :=
   ⟨Finset.univ, Finset.univ_nonempty⟩
+
+@[simp] theorem full_val [Fintype V] [Nonempty V] : (full : Face V).1 = Finset.univ := rfl
 
 /-- The mixture (union) of two faces. Represents mixing the strategies
     in A with those in B. -/
 def mix (A B : Face V) : Face V :=
   ⟨A.1 ∪ B.1, A.2.mono Finset.subset_union_left⟩
+
+@[simp] theorem mix_val {A B : Face V} : (mix A B).1 = A.1 ∪ B.1 := rfl
 
 theorem mix_comm (A B : Face V) : mix A B = mix B A :=
   Subtype.ext (Finset.union_comm A.1 B.1)
@@ -141,6 +147,11 @@ theorem mix_assoc (A B C : Face V) : mix (mix A B) C = mix A (mix B C) :=
   Subtype.ext (Finset.union_assoc A.1 B.1 C.1)
 
 def IsSubface (A B : Face V) : Prop := A.1 ⊆ B.1
+
+theorem IsSubface.refl (A : Face V) : IsSubface A A := fun _ h => h
+
+theorem IsSubface.trans {A B C : Face V} (h1 : IsSubface A B) (h2 : IsSubface B C) : IsSubface A C :=
+  fun _ h => h2 (h1 h)
 
 instance (A B : Face V) : Decidable (IsSubface A B) :=
   inferInstanceAs (Decidable (A.1 ⊆ B.1))
@@ -155,52 +166,6 @@ instance instFintype [Fintype V] : Fintype (Face V) := by
 end Face
 
 -- ================================================================
--- Section 1d: MixtureAlgebra and Game (abstract spec)
--- ================================================================
-
-/-- An idempotent commutative monoid — the algebraic structure of mixing strategies.
-    mix A B represents "some distribution supported on A ∪ B" without specifying which. -/
-class MixtureAlgebra (S : Type*) where
-  mix : S → S → S
-  mix_comm : ∀ a b, mix a b = mix b a
-  mix_idem : ∀ a, mix a a = a
-  mix_assoc : ∀ a b c, mix (mix a b) c = mix a (mix b c)
-
-instance {V : Type*} [DecidableEq V] : MixtureAlgebra (Face V) where
-  mix := Face.mix
-  mix_comm := Face.mix_comm
-  mix_idem := Face.mix_idem
-  mix_assoc := Face.mix_assoc
-
-/-- Abstract game: the most general notion of strategic interaction.
-    Each player has a strategy space with mixture, and a contextual preference
-    relation: `pref i σ s t` means "player i, when opponents play σ,
-    weakly prefers strategy s over t."
-
-    The preference is a transitive relation but not necessarily reflexive
-    (self-preference can fail for mixed strategies) or total (incomparable
-    strategies arise naturally from universal quantification over opponents). -/
-structure Game (I : Type*) where
-  S : I → Type*
-  mixture : ∀ i, MixtureAlgebra (S i)
-  pref : (i : I) → (∀ j, S j) → S i → S i → Prop
-  pref_trans : ∀ i σ (s t u : S i), pref i σ s t → pref i σ t u → pref i σ s u
-
-namespace Game
-
-variable {I : Type*} (G : Game I)
-
-/-- Player i strictly prefers s over t in context σ: s ≥ t but not t ≥ s. -/
-def StrictPref (i : I) (σ : ∀ j, G.S j) (s t : G.S i) : Prop :=
-  G.pref i σ s t ∧ ¬G.pref i σ t s
-
-/-- A profile is Nash if no player has a strategy strictly preferred to their current one. -/
-def IsNash (σ : ∀ j, G.S j) : Prop :=
-  ∀ i s, ¬G.StrictPref i σ s (σ i)
-
-end Game
-
--- ================================================================
 -- Section 2: Profile types
 -- ================================================================
 
@@ -208,6 +173,25 @@ variable (I : Type*) [DecidableEq I] (V : I → Type*) [∀ i, DecidableEq (V i)
 
 abbrev PureProfile := ∀ i : I, V i
 abbrev Profile := ∀ i : I, Face (V i)
+
+scoped notation σ "[" i " ↦ " A "]" => Function.update σ i A
+
+/-- A pure profile is consistent with a mixed profile at player i
+    if every opponent's action is in their face. -/
+def ConsistentAt {I : Type*} {V : I → Type*} [∀ i, DecidableEq (V i)]
+    (σ : Profile I V) (i : I) (p : PureProfile I V) : Prop :=
+  ∀ j, j ≠ i → p j ∈ (σ j).1
+
+theorem ConsistentAt.update {I : Type*} [DecidableEq I] {V : I → Type*} [∀ i, DecidableEq (V i)]
+    {σ : Profile I V} {i : I} {A : Face (V i)} {p : PureProfile I V}
+    (h : ConsistentAt (σ[i ↦ A]) i p) : ConsistentAt σ i p :=
+  fun j hj => by have := h j hj; rwa [Function.update_of_ne hj] at this
+
+theorem ConsistentAt.mono {I : Type*} {V : I → Type*} [∀ i, DecidableEq (V i)]
+    {σ τ : Profile I V} {i : I} {p : PureProfile I V}
+    (h : ConsistentAt σ i p) (hsub : ∀ j, j ≠ i → Face.IsSubface (σ j) (τ j)) :
+    ConsistentAt τ i p :=
+  fun j hj => hsub j hj (h j hj)
 
 -- ================================================================
 -- Section 3: SignGame structure
@@ -240,42 +224,46 @@ variable (G : SignGame I V)
     and every b ∈ B, sign i p a b ≥ 0. -/
 def DevFaceLE (i : I) (σ : Profile I V) (A B : Face (V i)) : Prop :=
   ∀ a ∈ A.1, ∀ p : PureProfile I V,
-    (∀ j, j ≠ i → p j ∈ (σ j).1) → ∀ b ∈ B.1, (G.sign i p a b).nonneg
+    ConsistentAt σ i p → ∀ b ∈ B.1, (G.sign i p a b).nonneg
 
 -- ================================================================
 -- Section 5: Monotonicity and transitivity
 -- ================================================================
 
-set_option linter.unusedSectionVars false in
+namespace DevFaceLE
+
+omit G [DecidableEq I] in
 /-- Antitonicity in opponent faces: larger opponent faces make DevFaceLE harder. -/
-theorem DevFaceLE_antitone {i : I} {σ τ : Profile I V}
+protected theorem antitone (G : SignGame I V) {i : I} {σ τ : Profile I V}
     (h : ∀ j, j ≠ i → Face.IsSubface (σ j) (τ j))
     {A B : Face (V i)} (hle : G.DevFaceLE i τ A B) :
     G.DevFaceLE i σ A B :=
-  fun a ha p hp b hb => hle a ha p (fun j hj => h j hj (hp j hj)) b hb
+  fun a ha p hp b hb => hle a ha p (hp.mono h) b hb
 
-set_option linter.unusedSectionVars false in
+omit G [DecidableEq I] in
 /-- Left monotonicity: subface of A still dominates. -/
-theorem DevFaceLE_left_mono {i : I} {σ : Profile I V} {A A' B : Face (V i)}
+protected theorem mono_left (G : SignGame I V) {i : I} {σ : Profile I V} {A A' B : Face (V i)}
     (h : Face.IsSubface A A') (hle : G.DevFaceLE i σ A' B) :
     G.DevFaceLE i σ A B :=
   fun a ha p hp b hb => hle a (h ha) p hp b hb
 
-set_option linter.unusedSectionVars false in
+omit G [DecidableEq I] in
 /-- Right monotonicity: dominates superface implies dominates subface. -/
-theorem DevFaceLE_right_mono {i : I} {σ : Profile I V} {A B B' : Face (V i)}
+protected theorem mono_right (G : SignGame I V) {i : I} {σ : Profile I V} {A B B' : Face (V i)}
     (h : Face.IsSubface B B') (hle : G.DevFaceLE i σ A B') :
     G.DevFaceLE i σ A B :=
   fun a ha p hp b hb => hle a ha p hp b (h hb)
 
-set_option linter.unusedSectionVars false in
+omit G [DecidableEq I] in
 /-- Transitivity of DevFaceLE. -/
-theorem DevFaceLE_trans {i : I} {σ : Profile I V} {A B C : Face (V i)}
+protected theorem trans (G : SignGame I V) {i : I} {σ : Profile I V} {A B C : Face (V i)}
     (hAB : G.DevFaceLE i σ A B) (hBC : G.DevFaceLE i σ B C) :
     G.DevFaceLE i σ A C := by
   intro a ha p hp c hc
   obtain ⟨b, hb⟩ := B.2
   exact G.sign_trans i p a b c (hAB a ha p hp b hb) (hBC b hb p hp c hc)
+
+end DevFaceLE
 
 -- ================================================================
 -- Section 6: StrictDev, IsNash
@@ -299,25 +287,24 @@ def OutsideDominated (i : I) (σ : Profile I V) : Prop :=
     G.DevFaceLE i σ (Face.vertex w) (Face.vertex v)
 
 -- ================================================================
--- Section 8: OutsideDominated base case
+-- Section 8-9: OutsideDominated API
 -- ================================================================
 
-theorem OutsideDominated_maximal (i : I)
+namespace OutsideDominated
+
+omit G [DecidableEq I] in
+protected theorem maximal (G : SignGame I V) (i : I)
     [∀ j, Fintype (V j)] [∀ j, Nonempty (V j)] :
     G.OutsideDominated i (fun _ => Face.full) :=
   fun v hv => absurd (Finset.mem_univ v) hv
 
--- ================================================================
--- Section 9: OutsideDominated preservation
--- ================================================================
-
 /-- When player i restricts to A ⊆ σ i with A dominating σ i,
     OutsideDominated for player i is preserved. -/
-theorem OutsideDominated_preserved {i : I} {σ : Profile I V} {A : Face (V i)}
+protected theorem preserved {i : I} {σ : Profile I V} {A : Face (V i)}
     (h_inv : G.OutsideDominated i σ)
     (h_sub : Face.IsSubface A (σ i))
     (h_dev : G.DevFaceLE i σ A (σ i)) :
-    G.OutsideDominated i (Function.update σ i A) := by
+    G.OutsideDominated i (σ[i ↦ A]) := by
   intro v hv w hw
   have hv' : v ∉ A.1 := by rwa [show (Function.update σ i A i).1 = A.1 from by
     simp [Function.update_self]] at hv
@@ -328,41 +315,42 @@ theorem OutsideDominated_preserved {i : I} {σ : Profile I V} {A : Face (V i)}
   have hb : b = v := Finset.mem_singleton.mp hb_v
   subst ha; subst hb
   -- After subst: a replaces w, b replaces v; hw' : a ∈ A.1, hv' : b ∉ A.1
-  have hp' : ∀ j, j ≠ i → p j ∈ (σ j).1 := fun j hj => by
-    have := hp j hj; rwa [Function.update_of_ne hj] at this
+  have hp' : ConsistentAt σ i p := hp.update
   by_cases hb_in : b ∈ (σ i).1
   · exact h_dev a hw' p hp' b hb_in
   · exact h_inv b hb_in a (h_sub hw') a (Finset.mem_singleton_self _) p hp'
       b (Finset.mem_singleton_self _)
 
 /-- When player i restricts, OutsideDominated for a different player j is preserved. -/
-theorem OutsideDominated_preserved_other {i j : I} (hij : j ≠ i)
+protected theorem preserved_other {i j : I} (hij : j ≠ i)
     {σ : Profile I V} {A : Face (V i)}
     (h_inv : G.OutsideDominated j σ)
     (h_sub : Face.IsSubface A (σ i)) :
-    G.OutsideDominated j (Function.update σ i A) := by
+    G.OutsideDominated j (σ[i ↦ A]) := by
   intro v hv w hw
   rw [Function.update_of_ne hij] at hv hw
-  apply DevFaceLE_antitone G (i := j) (σ := Function.update σ i A) (τ := σ)
+  apply DevFaceLE.antitone G (i := j) (σ := σ[i ↦ A]) (τ := σ)
   · intro k hk
     by_cases hki : k = i
     · subst hki; exact fun x hx => h_sub (by rwa [Function.update_self] at hx)
     · intro x hx; rwa [Function.update_of_ne hki] at hx
   · exact h_inv v hv w hw
 
+end OutsideDominated
+
 -- ================================================================
 -- Section 10: Restricting deviations
 -- ================================================================
 
-set_option linter.unusedSectionVars false in
+omit [DecidableEq I] in
 /-- Key lemma: the backward-direction witness is in σ i. -/
 private theorem outsideDom_witness_mem {i : I} {σ : Profile I V} {A : Face (V i)}
     (h_inv : G.OutsideDominated i σ)
     (h_neg : ¬G.DevFaceLE i σ (σ i) A) :
     ∃ a ∈ (σ i).1, ∃ p : PureProfile I V,
-      (∀ j, j ≠ i → p j ∈ (σ j).1) ∧
+      ConsistentAt σ i p ∧
       ∃ b ∈ A.1, ¬(G.sign i p a b).nonneg ∧ b ∈ (σ i).1 := by
-  simp only [DevFaceLE] at h_neg; push_neg at h_neg
+  simp only [DevFaceLE, ConsistentAt] at h_neg; push_neg at h_neg
   obtain ⟨a, ha, p, hp, b, hb, hn⟩ := h_neg
   by_cases hb_σ : b ∈ (σ i).1
   · exact ⟨a, ha, p, hp, b, hb, hn, hb_σ⟩
@@ -370,6 +358,7 @@ private theorem outsideDom_witness_mem {i : I} {σ : Profile I V} {A : Face (V i
       (h_inv b hb_σ a ha a (Finset.mem_singleton_self _) p hp b (Finset.mem_singleton_self _))
       hn
 
+omit [DecidableEq I] in
 /-- When OutsideDominated holds and player i has a strict deviation to A,
     there exists a restricting strict deviation A' ⊆ σ i with A' ≠ σ i. -/
 theorem exists_restrictingStrictDev {i : I} {σ : Profile I V} {A : Face (V i)}
@@ -381,7 +370,7 @@ theorem exists_restrictingStrictDev {i : I} {σ : Profile I V} {A : Face (V i)}
   obtain ⟨a, ha_σ, p, hp, b, hb_A, hn, hb_σ⟩ := outsideDom_witness_mem G h_inv h_bwd
   let A' : Face (V i) := ⟨A.1 ∩ (σ i).1, ⟨b, Finset.mem_inter.mpr ⟨hb_A, hb_σ⟩⟩⟩
   refine ⟨A', ⟨?_, ?_⟩, Finset.inter_subset_right, ?_⟩
-  · exact DevFaceLE_left_mono G Finset.inter_subset_left h_fwd
+  · exact DevFaceLE.mono_left G Finset.inter_subset_left h_fwd
   · intro h_contra
     exact absurd (h_contra a ha_σ p hp b (Finset.mem_inter.mpr ⟨hb_A, hb_σ⟩)) hn
   · intro heq
@@ -390,7 +379,7 @@ theorem exists_restrictingStrictDev {i : I} {σ : Profile I V} {A : Face (V i)}
     apply h_bwd
     intro x hx p' hp' y hy
     by_cases hy_σ : y ∈ (σ i).1
-    · exact (DevFaceLE_left_mono G h_σ_sub_A h_fwd) x hx p' hp' y hy_σ
+    · exact (DevFaceLE.mono_left G h_σ_sub_A h_fwd) x hx p' hp' y hy_σ
     · exact h_inv y hy_σ x hx x (Finset.mem_singleton_self _) p' hp'
         y (Finset.mem_singleton_self _)
 
@@ -398,14 +387,14 @@ theorem exists_restrictingStrictDev {i : I} {σ : Profile I V} {A : Face (V i)}
 -- Section 11: Profile size and descent
 -- ================================================================
 
-set_option linter.unusedSectionVars false in
+omit G in
 def profileSize [Fintype I] (σ : Profile I V) : ℕ :=
   Finset.univ.sum (fun i => (σ i).1.card)
 
-set_option linter.unusedSectionVars false in
+omit G in
 theorem profileSize_decreases [Fintype I] {i : I} {σ : Profile I V} {A : Face (V i)}
     (hsub : Face.IsSubface A (σ i)) (hne : A ≠ σ i) :
-    profileSize (Function.update σ i A) < profileSize σ := by
+    profileSize (σ[i ↦ A]) < profileSize σ := by
   unfold profileSize
   apply Finset.sum_lt_sum
   · intro j _
@@ -434,15 +423,15 @@ theorem nash_exists_of_OD [Fintype I]
     obtain ⟨i₀, A, hA⟩ := h
     obtain ⟨A', hdev, hsub, hne⟩ := exists_restrictingStrictDev G (h_od i₀) hA
     have hdec := profileSize_decreases hsub hne
-    exact nash_exists_of_OD (Function.update σ i₀ A') (fun j => by
+    exact nash_exists_of_OD (σ[i₀ ↦ A']) (fun j => by
       by_cases hij : j = i₀
-      · subst hij; exact OutsideDominated_preserved G (h_od j) hsub hdev.1
-      · exact OutsideDominated_preserved_other G hij (h_od j) hsub)
+      · subst hij; exact OutsideDominated.preserved G (h_od j) hsub hdev.1
+      · exact OutsideDominated.preserved_other G hij (h_od j) hsub)
   termination_by profileSize σ
 
 theorem nash_exists [Fintype I] [∀ i, Fintype (V i)] [∀ i, Nonempty (V i)] :
     ∃ σ, G.IsNash σ :=
-  nash_exists_of_OD G (fun _ => Face.full) (fun i => OutsideDominated_maximal G i)
+  nash_exists_of_OD G (fun _ => Face.full) (fun i => OutsideDominated.maximal G i)
 
 -- ================================================================
 -- Section 13: Nash existence with subface and OD tracking
@@ -459,11 +448,11 @@ theorem nash_exists_sub_OD [Fintype I]
     obtain ⟨i₀, A, hA⟩ := h
     obtain ⟨A', hdev, hsub, hne⟩ := exists_restrictingStrictDev G (h_od i₀) hA
     have hdec := profileSize_decreases hsub hne
-    have h_od' : ∀ j, G.OutsideDominated j (Function.update σ i₀ A') := fun j => by
+    have h_od' : ∀ j, G.OutsideDominated j (σ[i₀ ↦ A']) := fun j => by
       by_cases hij : j = i₀
-      · subst hij; exact OutsideDominated_preserved G (h_od j) hsub hdev.1
-      · exact OutsideDominated_preserved_other G hij (h_od j) hsub
-    obtain ⟨τ, hτN, hτ_sub, hτ_od⟩ := nash_exists_sub_OD (Function.update σ i₀ A') h_od'
+      · subst hij; exact OutsideDominated.preserved G (h_od j) hsub hdev.1
+      · exact OutsideDominated.preserved_other G hij (h_od j) hsub
+    obtain ⟨τ, hτN, hτ_sub, hτ_od⟩ := nash_exists_sub_OD (σ[i₀ ↦ A']) h_od'
     refine ⟨τ, hτN, fun j => ?_, hτ_od⟩
     by_cases hji : j = i₀
     · subst hji
@@ -515,354 +504,6 @@ def ofPayoffs [Fintype I]
 def IsPureNash (p : PureProfile I V) : Prop :=
   ∀ (i : I) (v : V i), (G.sign i p (p i) v).nonneg
 
--- ================================================================
--- Section 16: SignGame.toGame — bridge to abstract Game spec
--- ================================================================
-
-/-- Construct an abstract Game from a SignGame.
-    Strategies are faces, mixture is union, preference is DevFaceLE. -/
-def toGame : Game I where
-  S := fun i => Face (V i)
-  mixture := fun _ => inferInstance
-  pref := fun i σ A B => G.DevFaceLE i σ A B
-  pref_trans := fun _ _ _ _ _ hAB hBC => G.DevFaceLE_trans hAB hBC
-
-/-- StrictPref in the abstract Game agrees with StrictDev in the SignGame. -/
-theorem toGame_strictPref_iff {i : I} {σ : Profile I V} {A : Face (V i)} :
-    G.toGame.StrictPref i σ A (σ i) ↔ G.StrictDev i σ A := by
-  rfl
-
-/-- IsNash in the abstract Game agrees with IsNash in the SignGame. -/
-theorem toGame_isNash_iff {σ : Profile I V} :
-    G.toGame.IsNash σ ↔ G.IsNash σ := by
-  rfl
-
-/-- Nash existence lifts to the abstract Game. -/
-theorem toGame_nash_exists [Fintype I] [∀ i, Fintype (V i)] [∀ i, Nonempty (V i)] :
-    ∃ σ, G.toGame.IsNash σ :=
-  G.nash_exists
-
 end SignGame
-
--- ================================================================
--- 2×2 game examples (I = Fin 2, V = fun _ => Bool)
--- ================================================================
-
-/-- Helper: compute sign from two Ints -/
-def intSign (a b : Int) : Sign :=
-  if a > b then .pos
-  else if a = b then .zero
-  else .neg
-
-theorem intSign_refl (a : Int) : intSign a a = .zero := by
-  simp [intSign]
-
-theorem intSign_antisym (a b : Int) : intSign a b = (intSign b a).flip := by
-  simp only [intSign, Sign.flip]; split_ifs <;> first | rfl | omega
-
-theorem intSign_trans (a b c : Int) :
-    (intSign a b).nonneg → (intSign b c).nonneg → (intSign a c).nonneg := by
-  simp only [intSign, Sign.nonneg]; split_ifs <;> simp_all <;> omega
-
-/-- Construct a 2-player Bool game from payoff matrices.
-    Uses explicit sign computation to enable `decide`. -/
-def game2x2 (u_TT u_TF u_FT u_FF : Int) (v_TT v_TF v_FT v_FF : Int) :
-    SignGame (Fin 2) (fun _ : Fin 2 => Bool) where
-  sign i p a b :=
-    let opp := p (1 - i)
-    if (i : ℕ) = 0 then
-      intSign
-        (if a then (if opp then u_TT else u_TF) else (if opp then u_FT else u_FF))
-        (if b then (if opp then u_TT else u_TF) else (if opp then u_FT else u_FF))
-    else
-      intSign
-        (if opp then (if a then v_TT else v_TF) else (if a then v_FT else v_FF))
-        (if opp then (if b then v_TT else v_TF) else (if b then v_FT else v_FF))
-  sign_refl i p a := by simp [intSign]
-  sign_antisym i p a b := by
-    simp only [intSign, Sign.flip]
-    split_ifs <;> first | rfl | omega
-  sign_trans i p a b c := by
-    intro hab hbc; simp only [] at *
-    split_ifs at * <;> exact intSign_trans _ _ _ hab hbc
-  sign_irrel i p q a b h := by
-    have : p (1 - i) = q (1 - i) := h (1 - i) (by intro heq; exact absurd heq (by omega))
-    simp only [this]
-
--- Prisoner's Dilemma: C = true, D = false
-def genPD := game2x2 3 0 5 1 3 5 0 1
-
-theorem genPD_nash_DD : genPD.IsPureNash (fun _ => false) := by
-  intro i v; fin_cases i <;> cases v <;> decide
-
-theorem genPD_not_nash_CC : ¬genPD.IsPureNash (fun _ => true) := by
-  intro h; have := h 0 false; revert this; decide
-
--- Matching Pennies: H = true, T = false
-def genMP := game2x2 1 0 0 1 0 1 1 0
-
-theorem genMP_no_pureNash : ∀ p : PureProfile (Fin 2) (fun _ : Fin 2 => Bool),
-    ¬genMP.IsPureNash p := by
-  intro p hp
-  -- Specialize to get contradictory sign conditions
-  -- Player 0 comparing (p 0) to false, and player 1 comparing (p 1) to false
-  have h0f := hp 0 false
-  have h1f := hp 1 false
-  -- Unfold: genMP.sign i p (p i) false uses opp = p (1 - i)
-  -- For player 0: opp = p 1; for player 1: opp = p 0
-  unfold SignGame.IsPureNash at hp
-  -- Key insight: use `show` to convert the sign to a concrete computation
-  -- after specializing at concrete i values
-  have h0t := hp 0 true
-  have h1t := hp 1 true
-  -- Now case split and use `simp` with concrete player indices
-  -- After cases on p 0 / p 1, we have concrete Bool values
-  -- but `p (1 - 0)` and `p (1 - 1)` need reducing
-  -- Use `conv` or direct `change` to help
-  have opp0 : p ((1 : Fin 2) - 0) = p 1 := congr_arg p (by decide)
-  have opp1 : p ((1 : Fin 2) - 1) = p 0 := congr_arg p (by decide)
-  -- Rewrite in hypotheses h0f, h1f, h0t, h1t
-  simp only [genMP, game2x2, opp0, opp1, intSign, Sign.nonneg] at h0f h1f h0t h1t
-  -- Now hypotheses should only mention p 0 and p 1 (not p (1-i))
-  cases h0 : p 0 <;> cases h1 : p 1 <;> simp_all
-
--- Stag Hunt: S = true, H = false
-def genSH := game2x2 4 0 3 3 4 3 0 3
-
-theorem genSH_nash_SS : genSH.IsPureNash (fun _ => true) := by
-  intro i v; fin_cases i <;> cases v <;> decide
-
-theorem genSH_nash_HH : genSH.IsPureNash (fun _ => false) := by
-  intro i v; fin_cases i <;> cases v <;> decide
-
--- Battle of the Sexes: O = true, F = false
-def genBoS := game2x2 3 0 0 2 2 0 0 3
-
-theorem genBoS_nash_OO : genBoS.IsPureNash (fun _ => true) := by
-  intro i v; fin_cases i <;> cases v <;> decide
-
-theorem genBoS_nash_FF : genBoS.IsPureNash (fun _ => false) := by
-  intro i v; fin_cases i <;> cases v <;> decide
-
--- ================================================================
--- 3-player coordination game example
--- ================================================================
-
-/-- A 3-player coordination game where each player has two actions (Bool).
-    Each player gets payoff 1 if all agree, 0 otherwise.
-    Sign is computed directly for decidability. -/
-def coordGame3 : SignGame (Fin 3) (fun _ : Fin 3 => Bool) where
-  sign i p a b :=
-    -- Whether all agree when player i plays x (x = a or b)
-    let agree (x : Bool) : Bool :=
-      (if (0 : Fin 3) = i then x else p 0) == (if (1 : Fin 3) = i then x else p 1) &&
-      (if (1 : Fin 3) = i then x else p 1) == (if (2 : Fin 3) = i then x else p 2)
-    let payA : Int := if agree a then 1 else 0
-    let payB : Int := if agree b then 1 else 0
-    intSign payA payB
-  sign_refl i p a := by simp [intSign]
-  sign_antisym i p a b := by
-    simp only [intSign, Sign.flip]; split_ifs <;> first | rfl | omega
-  sign_trans i p a b c := by
-    intro hab hbc; simp only [] at *
-    split_ifs at * <;> exact intSign_trans _ _ _ hab hbc
-  sign_irrel i p q a b h := by
-    -- The agree function only uses p j for j ≠ i (otherwise uses a/b)
-    -- When j ≠ i, h gives p j = q j, so agree is the same
-    suffices ∀ x : Bool,
-      ((if (0 : Fin 3) = i then x else p 0) == (if (1 : Fin 3) = i then x else p 1) &&
-       (if (1 : Fin 3) = i then x else p 1) == (if (2 : Fin 3) = i then x else p 2)) =
-      ((if (0 : Fin 3) = i then x else q 0) == (if (1 : Fin 3) = i then x else q 1) &&
-       (if (1 : Fin 3) = i then x else q 1) == (if (2 : Fin 3) = i then x else q 2)) by
-      simp only [intSign, this]
-    intro x
-    have h0 : (0 : Fin 3) ≠ i → p 0 = q 0 := fun hi => h 0 hi
-    have h1 : (1 : Fin 3) ≠ i → p 1 = q 1 := fun hi => h 1 hi
-    have h2 : (2 : Fin 3) ≠ i → p 2 = q 2 := fun hi => h 2 hi
-    by_cases h0i : (0 : Fin 3) = i <;> by_cases h1i : (1 : Fin 3) = i <;>
-      by_cases h2i : (2 : Fin 3) = i <;> simp_all
-
-theorem coordGame3_nash_allTrue : coordGame3.IsPureNash (fun _ => true) := by
-  intro i v; fin_cases i <;> cases v <;> decide
-
-theorem coordGame3_nash_allFalse : coordGame3.IsPureNash (fun _ => false) := by
-  intro i v; fin_cases i <;> cases v <;> decide
-
-theorem coordGame3_not_nash_mixed :
-    ¬coordGame3.IsPureNash (fun i : Fin 3 => if i = 0 then true else false) := by
-  intro h; have := h 0 false; revert this; decide
-
--- ================================================================
--- Pedagogical examples
--- ================================================================
-
-/-- The Prisoner's Dilemma has a unique Nash equilibrium at (D,D).
-    Here is the deviation graph: each non-Nash profile has a player
-    who can strictly improve by switching.
-
-    (C,C) ──player 0 deviates──→ (D,C)
-      │                            │
-    player 1 deviates          player 1 deviates
-      ↓                            ↓
-    (C,D) ──player 0 deviates──→ (D,D) ← Nash: no deviations out -/
-theorem genPD_unique_pureNash :
-    ∀ p : PureProfile (Fin 2) (fun _ : Fin 2 => Bool),
-    genPD.IsPureNash p ↔ p = (fun _ => false) := by
-  intro p
-  constructor
-  · intro hp
-    by_contra h
-    -- If p ≠ (fun _ => false), some player plays true (cooperates)
-    -- and can deviate to false (defect) for a better payoff
-    have : ∃ i, p i = true := by
-      by_contra hall; push_neg at hall
-      apply h; ext i; exact Bool.eq_false_iff.mpr (hall i)
-    obtain ⟨i, hi⟩ := this
-    have hpi := hp i false; have hpi' := hp i true
-    fin_cases i <;> (cases h0 : p 0 <;> cases h1 : p 1 <;>
-      simp_all [genPD, game2x2, intSign, Sign.nonneg])
-  · rintro rfl; exact genPD_nash_DD
-
-/-- Matching Pennies: the only Nash equilibrium is the fully mixed profile
-    where both players play {H, T}. We show:
-    (1) No pure profile is Nash (genMP_no_pureNash above)
-    (2) The fully mixed profile IS Nash -/
-theorem genMP_mixed_nash : genMP.IsNash (fun _ : Fin 2 => Face.full (V := Bool)) := by
-  intro i A
-  -- Need: ¬StrictDev i σ A where σ = fun _ => full
-  -- StrictDev = DevFaceLE i σ A (σ i) ∧ ¬DevFaceLE i σ (σ i) A
-  -- DevFaceLE i σ A {true, false} means:
-  --   ∀ a ∈ A, ∀ p (opponents play anything), ∀ b ∈ {T,F}, sign(a,b) ≥ 0
-  -- This fails: for any a, there's an opponent choice making !a beat a.
-  intro ⟨hfwd, _⟩
-  obtain ⟨a, ha⟩ := A.2
-  -- a ∈ A, so hfwd gives: sign(a, b) ≥ 0 for all opponent choices and b ∈ {T,F}
-  -- Take b = !a and two different opponents to get a contradiction
-  have h1 := hfwd a ha (fun _ => true) (fun _ _ => Finset.mem_univ _)
-    (!a) (Finset.mem_univ _)
-  have h2 := hfwd a ha (fun _ => false) (fun _ _ => Finset.mem_univ _)
-    (!a) (Finset.mem_univ _)
-  -- Each case (i=0/1, a=T/F) gives contradictory sign constraints
-  fin_cases i <;> cases a <;> simp_all [genMP, game2x2, intSign, Sign.nonneg]
-
-/-- The DevFaceLE ordering is partial on mixed profiles: in Matching Pennies,
-    neither {H} nor {T} dominates the other when the opponent mixes. -/
-theorem genMP_partial_order :
-    let σ : Profile (Fin 2) (fun _ : Fin 2 => Bool) := fun _ => Face.full
-    ¬genMP.DevFaceLE 0 σ (Face.vertex true) (Face.vertex false) ∧
-    ¬genMP.DevFaceLE 0 σ (Face.vertex false) (Face.vertex true) := by
-  refine ⟨fun h => ?_, fun h => ?_⟩
-  · -- H doesn't dominate T: when opponent plays T (false), T beats H for player 0
-    have := h true (Finset.mem_singleton_self _)
-      (fun _ => false) (fun _ _ => Finset.mem_univ _)
-      false (Finset.mem_singleton_self _)
-    simp_all [genMP, game2x2, intSign, Sign.nonneg]
-  · -- T doesn't dominate H: when opponent plays H (true), H beats T for player 0
-    have := h false (Finset.mem_singleton_self _)
-      (fun _ => true) (fun _ _ => Finset.mem_univ _)
-      true (Finset.mem_singleton_self _)
-    simp_all [genMP, game2x2, intSign, Sign.nonneg]
-
--- ================================================================
--- Readable game constructors (for the article)
--- ================================================================
-
-/-- Build a symmetric 2-player game from a ranking function.
-    rank(myAction, oppAction) assigns a preference rank to each outcome.
-    Higher rank = more preferred. Only the ordering matters — any two
-    ranking functions with the same ordering produce the same game. -/
-def symGame2x2 (rank : Bool → Bool → ℕ) :
-    SignGame (Fin 2) (fun _ : Fin 2 => Bool) where
-  sign i p a b :=
-    let opp := p (1 - i)
-    cmpSign (rank b opp) (rank a opp)
-  sign_refl i p a := by simp [cmpSign_self]
-  sign_antisym i p a b := by rw [cmpSign_flip]
-  sign_trans i p a b c h1 h2 := cmpSign_trans h2 h1
-  sign_irrel i p q a b h := by
-    have : p (1 - i) = q (1 - i) := h (1 - i) (by intro heq; exact absurd heq (by omega))
-    simp only [this]
-
-/-- Build an asymmetric 2-player game from per-player ranking functions. -/
-def game2x2_rank (rank₀ rank₁ : Bool → Bool → ℕ) :
-    SignGame (Fin 2) (fun _ : Fin 2 => Bool) where
-  sign i p a b :=
-    let opp := p (1 - i)
-    if (i : ℕ) = 0 then cmpSign (rank₀ b opp) (rank₀ a opp)
-    else cmpSign (rank₁ b opp) (rank₁ a opp)
-  sign_refl i p a := by split_ifs <;> simp [cmpSign_self]
-  sign_antisym i p a b := by split_ifs <;> rw [cmpSign_flip]
-  sign_trans i p a b c h1 h2 := by
-    simp only [] at *; split_ifs at * <;> exact cmpSign_trans h2 h1
-  sign_irrel i p q a b h := by
-    have : p (1 - i) = q (1 - i) := h (1 - i) (by intro heq; exact absurd heq (by omega))
-    simp only [this]
-
--- ================================================================
--- Prisoner's Dilemma (readable version)
--- ================================================================
-
-/-- Prisoner's Dilemma ranking. C = true, D = false.
-    Each player ranks outcomes (from their own perspective):
-      CD < DD < CC < DC
-    "If I cooperate and they defect, that's the worst.
-     If we both defect, that's bad but not the worst.
-     If we both cooperate, that's good.
-     If I defect and they cooperate, that's the best." -/
-def pd_rank (me opp : Bool) : ℕ :=
-  match me, opp with
-  | true,  false => 0   -- I cooperate, they defect (worst)
-  | false, false => 1   -- both defect
-  | true,  true  => 2   -- both cooperate
-  | false, true  => 3   -- I defect, they cooperate (best)
-
-/-- The PD is symmetric: both players have the same ranking. -/
-def genPD' := symGame2x2 pd_rank
-
-theorem genPD'_nash_DD : genPD'.IsPureNash (fun _ => false) := by
-  intro i v; fin_cases i <;> cases v <;> decide
-
-theorem genPD'_not_nash_CC : ¬genPD'.IsPureNash (fun _ => true) := by
-  intro h; have := h 0 false; revert this; decide
-
-/-- The numbers are just labels for the ranking.
-    Any other numbers with the same ordering produce the same game. -/
-def pd_rank_alt (me opp : Bool) : ℕ :=
-  match me, opp with
-  | true,  false => 10
-  | false, false => 20
-  | true,  true  => 30
-  | false, true  => 40
-
-theorem pd_same_game :
-    (symGame2x2 pd_rank).sign = (symGame2x2 pd_rank_alt).sign := by
-  ext i p a b
-  simp only [symGame2x2, pd_rank, pd_rank_alt, cmpSign]
-  cases a <;> cases b <;> cases (p (1 - i)) <;> simp
-
--- ================================================================
--- Matching Pennies (readable version)
--- ================================================================
-
-/-- Matching Pennies. H = true, T = false.
-    Player 0 wants to match: HH and TT are good, HT and TH are bad.
-    Player 1 wants to differ: HT and TH are good, HH and TT are bad. -/
-def genMP' := game2x2_rank
-  (fun me opp => match me, opp with  -- P0 wants to match
-    | true,  true  => 1
-    | false, false => 1
-    | _,     _     => 0)
-  (fun me opp => match me, opp with  -- P1 wants to differ
-    | true,  false => 1
-    | false, true  => 1
-    | _,     _     => 0)
-
-theorem genMP'_no_pureNash :
-    ∀ p, ¬genMP'.IsPureNash p := by
-  intro p hp
-  have h0t := hp 0 true; have h0f := hp 0 false
-  have h1t := hp 1 true; have h1f := hp 1 false
-  simp only [genMP', game2x2_rank, SignGame.IsPureNash, cmpSign, Sign.nonneg] at *
-  cases h0 : p 0 <;> cases h1 : p 1 <;> simp_all
 
 end Base
