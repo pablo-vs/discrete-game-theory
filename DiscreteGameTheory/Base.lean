@@ -9,6 +9,27 @@ import Mathlib.Tactic.FinCases
 
 namespace Base
 
+/-!
+# Sign games and Nash existence
+
+This file defines sign games, games in which each player has a type of possible
+actions and preference order on outcomes.
+
+The main result is the existence theorem of Nash equilibria in games with finite players and actions.
+
+
+## Main definitions and theorems
+* `Sign`                    : inductive: `pos | neg | zero`
+* `Face V`                  : Nonempty subsets `{ S : Finset V // S.Nonempty }`
+* `Profile I V`             : `∀ i, Face (V i)`
+* `SignGame I V`            : sign function + refl/antisym/trans/irrel axioms
+* `Dominates i σ A B`       : A weakly dominates B for player i in context σ
+* `StrictDom i σ A`         : Dominates A (σ i) and not Dominates (σ i) A
+* `IsNash σ`                : ∀ i A, ¬ StrictDom i σ A
+* `OutsideDom i σ`          : every excluded action dominated by every included one
+* `nash_exists`             : Nash for any finite game
+-/
+
 -- ================================================================
 -- Section 1: Sign type
 -- ================================================================
@@ -113,6 +134,10 @@ theorem cmpSign_trans {a b c : ℕ} (h1 : (cmpSign a b).nonneg) (h2 : (cmpSign b
 -- Section 1c: Faces (nonempty finite subsets)
 -- ================================================================
 
+/--
+A face is a nonempty subset of a finite set.
+It represents a face of a discrete simplex, the span of the vertices it contains.
+-/
 @[reducible]
 def Face (V : Type*) [DecidableEq V] := { S : Finset V // S.Nonempty }
 
@@ -120,6 +145,7 @@ namespace Face
 
 variable {V : Type*} [DecidableEq V]
 
+/-- Given an element of type V, the set {v} as a face. -/
 def vertex (v : V) : Face V :=
   ⟨{v}, Finset.singleton_nonempty v⟩
 
@@ -171,9 +197,12 @@ end Face
 
 variable (I : Type*) [DecidableEq I] (V : I → Type*) [∀ i, DecidableEq (V i)]
 
+/-- A pure profile is a choice of action for each player. -/
 abbrev PureProfile := ∀ i : I, V i
+/-- A profile is a choice of face (mixed strategy) for each player. -/
 abbrev Profile := ∀ i : I, Face (V i)
 
+/-- A deviation σ[i ↦ A] is a new profile in which player i selects A. -/
 scoped notation σ "[" i " ↦ " A "]" => Function.update σ i A
 
 /-- A pure profile is consistent with a mixed profile at player i
@@ -216,13 +245,13 @@ variable {I : Type*} [DecidableEq I] {V : I → Type*} [∀ i, DecidableEq (V i)
 variable (G : SignGame I V)
 
 -- ================================================================
--- Section 4: DevFaceLE
+-- Section 4: Dominates
 -- ================================================================
 
 /-- A weakly dominates B for player i against opponent profile σ:
     for every a ∈ A, every pure opponent profile consistent with σ,
     and every b ∈ B, sign i p a b ≥ 0. -/
-def DevFaceLE (i : I) (σ : Profile I V) (A B : Face (V i)) : Prop :=
+def Dominates (i : I) (σ : Profile I V) (A B : Face (V i)) : Prop :=
   ∀ a ∈ A.1, ∀ p : PureProfile I V,
     ConsistentAt σ i p → ∀ b ∈ B.1, (G.sign i p a b).nonneg
 
@@ -230,81 +259,81 @@ def DevFaceLE (i : I) (σ : Profile I V) (A B : Face (V i)) : Prop :=
 -- Section 5: Monotonicity and transitivity
 -- ================================================================
 
-namespace DevFaceLE
+namespace Dominates
 
 omit G [DecidableEq I] in
-/-- Antitonicity in opponent faces: larger opponent faces make DevFaceLE harder. -/
+/-- Antitonicity in opponent faces: larger opponent faces make Dominates harder. -/
 protected theorem antitone (G : SignGame I V) {i : I} {σ τ : Profile I V}
     (h : ∀ j, j ≠ i → Face.IsSubface (σ j) (τ j))
-    {A B : Face (V i)} (hle : G.DevFaceLE i τ A B) :
-    G.DevFaceLE i σ A B :=
+    {A B : Face (V i)} (hle : G.Dominates i τ A B) :
+    G.Dominates i σ A B :=
   fun a ha p hp b hb => hle a ha p (hp.mono h) b hb
 
 omit G [DecidableEq I] in
 /-- Left monotonicity: subface of A still dominates. -/
 protected theorem mono_left (G : SignGame I V) {i : I} {σ : Profile I V} {A A' B : Face (V i)}
-    (h : Face.IsSubface A A') (hle : G.DevFaceLE i σ A' B) :
-    G.DevFaceLE i σ A B :=
+    (h : Face.IsSubface A A') (hle : G.Dominates i σ A' B) :
+    G.Dominates i σ A B :=
   fun a ha p hp b hb => hle a (h ha) p hp b hb
 
 omit G [DecidableEq I] in
 /-- Right monotonicity: dominates superface implies dominates subface. -/
 protected theorem mono_right (G : SignGame I V) {i : I} {σ : Profile I V} {A B B' : Face (V i)}
-    (h : Face.IsSubface B B') (hle : G.DevFaceLE i σ A B') :
-    G.DevFaceLE i σ A B :=
+    (h : Face.IsSubface B B') (hle : G.Dominates i σ A B') :
+    G.Dominates i σ A B :=
   fun a ha p hp b hb => hle a ha p hp b (h hb)
 
 omit G [DecidableEq I] in
-/-- Transitivity of DevFaceLE. -/
+/-- Transitivity of Dominates. -/
 protected theorem trans (G : SignGame I V) {i : I} {σ : Profile I V} {A B C : Face (V i)}
-    (hAB : G.DevFaceLE i σ A B) (hBC : G.DevFaceLE i σ B C) :
-    G.DevFaceLE i σ A C := by
+    (hAB : G.Dominates i σ A B) (hBC : G.Dominates i σ B C) :
+    G.Dominates i σ A C := by
   intro a ha p hp c hc
   obtain ⟨b, hb⟩ := B.2
   exact G.sign_trans i p a b c (hAB a ha p hp b hb) (hBC b hb p hp c hc)
 
-end DevFaceLE
+end Dominates
 
 -- ================================================================
--- Section 6: StrictDev, IsNash
+-- Section 6: StrictDom, IsNash
 -- ================================================================
 
 /-- Player i has a strict deviation to A from profile σ. -/
-def StrictDev (i : I) (σ : Profile I V) (A : Face (V i)) : Prop :=
-  G.DevFaceLE i σ A (σ i) ∧ ¬G.DevFaceLE i σ (σ i) A
+def StrictDom (i : I) (σ : Profile I V) (A : Face (V i)) : Prop :=
+  G.Dominates i σ A (σ i) ∧ ¬G.Dominates i σ (σ i) A
 
 /-- A profile is Nash if no player has a strict deviation. -/
 def IsNash (σ : Profile I V) : Prop :=
-  ∀ (i : I) (A : Face (V i)), ¬G.StrictDev i σ A
+  ∀ (i : I) (A : Face (V i)), ¬G.StrictDom i σ A
 
 -- ================================================================
--- Section 7: OutsideDominated
+-- Section 7: OutsideDom
 -- ================================================================
 
 /-- Every included action dominates every excluded action for player i. -/
-def OutsideDominated (i : I) (σ : Profile I V) : Prop :=
+def OutsideDom (i : I) (σ : Profile I V) : Prop :=
   ∀ v, v ∉ (σ i).1 → ∀ w, w ∈ (σ i).1 →
-    G.DevFaceLE i σ (Face.vertex w) (Face.vertex v)
+    G.Dominates i σ (Face.vertex w) (Face.vertex v)
 
 -- ================================================================
--- Section 8-9: OutsideDominated API
+-- Section 8-9: OutsideDom API
 -- ================================================================
 
-namespace OutsideDominated
+namespace OutsideDom
 
 omit G [DecidableEq I] in
 protected theorem maximal (G : SignGame I V) (i : I)
     [∀ j, Fintype (V j)] [∀ j, Nonempty (V j)] :
-    G.OutsideDominated i (fun _ => Face.full) :=
+    G.OutsideDom i (fun _ => Face.full) :=
   fun v hv => absurd (Finset.mem_univ v) hv
 
 /-- When player i restricts to A ⊆ σ i with A dominating σ i,
-    OutsideDominated for player i is preserved. -/
+    OutsideDom for player i is preserved. -/
 protected theorem preserved {i : I} {σ : Profile I V} {A : Face (V i)}
-    (h_inv : G.OutsideDominated i σ)
+    (h_inv : G.OutsideDom i σ)
     (h_sub : Face.IsSubface A (σ i))
-    (h_dev : G.DevFaceLE i σ A (σ i)) :
-    G.OutsideDominated i (σ[i ↦ A]) := by
+    (h_dev : G.Dominates i σ A (σ i)) :
+    G.OutsideDom i (σ[i ↦ A]) := by
   intro v hv w hw
   have hv' : v ∉ A.1 := by rwa [show (Function.update σ i A i).1 = A.1 from by
     simp [Function.update_self]] at hv
@@ -321,22 +350,22 @@ protected theorem preserved {i : I} {σ : Profile I V} {A : Face (V i)}
   · exact h_inv b hb_in a (h_sub hw') a (Finset.mem_singleton_self _) p hp'
       b (Finset.mem_singleton_self _)
 
-/-- When player i restricts, OutsideDominated for a different player j is preserved. -/
+/-- When player i restricts, OutsideDom for a different player j is preserved. -/
 protected theorem preserved_other {i j : I} (hij : j ≠ i)
     {σ : Profile I V} {A : Face (V i)}
-    (h_inv : G.OutsideDominated j σ)
+    (h_inv : G.OutsideDom j σ)
     (h_sub : Face.IsSubface A (σ i)) :
-    G.OutsideDominated j (σ[i ↦ A]) := by
+    G.OutsideDom j (σ[i ↦ A]) := by
   intro v hv w hw
   rw [Function.update_of_ne hij] at hv hw
-  apply DevFaceLE.antitone G (i := j) (σ := σ[i ↦ A]) (τ := σ)
+  apply Dominates.antitone G (i := j) (σ := σ[i ↦ A]) (τ := σ)
   · intro k hk
     by_cases hki : k = i
     · subst hki; exact fun x hx => h_sub (by rwa [Function.update_self] at hx)
     · intro x hx; rwa [Function.update_of_ne hki] at hx
   · exact h_inv v hv w hw
 
-end OutsideDominated
+end OutsideDom
 
 -- ================================================================
 -- Section 10: Restricting deviations
@@ -345,12 +374,12 @@ end OutsideDominated
 omit [DecidableEq I] in
 /-- Key lemma: the backward-direction witness is in σ i. -/
 private theorem outsideDom_witness_mem {i : I} {σ : Profile I V} {A : Face (V i)}
-    (h_inv : G.OutsideDominated i σ)
-    (h_neg : ¬G.DevFaceLE i σ (σ i) A) :
+    (h_inv : G.OutsideDom i σ)
+    (h_neg : ¬G.Dominates i σ (σ i) A) :
     ∃ a ∈ (σ i).1, ∃ p : PureProfile I V,
       ConsistentAt σ i p ∧
       ∃ b ∈ A.1, ¬(G.sign i p a b).nonneg ∧ b ∈ (σ i).1 := by
-  simp only [DevFaceLE, ConsistentAt] at h_neg; push_neg at h_neg
+  simp only [Dominates, ConsistentAt] at h_neg; push_neg at h_neg
   obtain ⟨a, ha, p, hp, b, hb, hn⟩ := h_neg
   by_cases hb_σ : b ∈ (σ i).1
   · exact ⟨a, ha, p, hp, b, hb, hn, hb_σ⟩
@@ -359,18 +388,18 @@ private theorem outsideDom_witness_mem {i : I} {σ : Profile I V} {A : Face (V i
       hn
 
 omit [DecidableEq I] in
-/-- When OutsideDominated holds and player i has a strict deviation to A,
+/-- When OutsideDom holds and player i has a strict deviation to A,
     there exists a restricting strict deviation A' ⊆ σ i with A' ≠ σ i. -/
-theorem exists_restrictingStrictDev {i : I} {σ : Profile I V} {A : Face (V i)}
-    (h_inv : G.OutsideDominated i σ)
-    (h_dev : G.StrictDev i σ A) :
+theorem exists_strictDom_sub {i : I} {σ : Profile I V} {A : Face (V i)}
+    (h_inv : G.OutsideDom i σ)
+    (h_dev : G.StrictDom i σ A) :
     ∃ A' : Face (V i),
-      G.StrictDev i σ A' ∧ Face.IsSubface A' (σ i) ∧ A' ≠ σ i := by
+      G.StrictDom i σ A' ∧ Face.IsSubface A' (σ i) ∧ A' ≠ σ i := by
   obtain ⟨h_fwd, h_bwd⟩ := h_dev
   obtain ⟨a, ha_σ, p, hp, b, hb_A, hn, hb_σ⟩ := outsideDom_witness_mem G h_inv h_bwd
   let A' : Face (V i) := ⟨A.1 ∩ (σ i).1, ⟨b, Finset.mem_inter.mpr ⟨hb_A, hb_σ⟩⟩⟩
   refine ⟨A', ⟨?_, ?_⟩, Finset.inter_subset_right, ?_⟩
-  · exact DevFaceLE.mono_left G Finset.inter_subset_left h_fwd
+  · exact Dominates.mono_left G Finset.inter_subset_left h_fwd
   · intro h_contra
     exact absurd (h_contra a ha_σ p hp b (Finset.mem_inter.mpr ⟨hb_A, hb_σ⟩)) hn
   · intro heq
@@ -379,7 +408,7 @@ theorem exists_restrictingStrictDev {i : I} {σ : Profile I V} {A : Face (V i)}
     apply h_bwd
     intro x hx p' hp' y hy
     by_cases hy_σ : y ∈ (σ i).1
-    · exact (DevFaceLE.mono_left G h_σ_sub_A h_fwd) x hx p' hp' y hy_σ
+    · exact (Dominates.mono_left G h_σ_sub_A h_fwd) x hx p' hp' y hy_σ
     · exact h_inv y hy_σ x hx x (Finset.mem_singleton_self _) p' hp'
         y (Finset.mem_singleton_self _)
 
@@ -410,49 +439,49 @@ theorem profileSize_decreases [Fintype I] {i : I} {σ : Profile I V} {A : Face (
 -- Section 12: Nash existence
 -- ================================================================
 
-/-- Nash existence from any profile satisfying OutsideDominated.
+/-- Nash existence from any profile satisfying OutsideDom.
     Used directly for finite games (starting from full profile) and
     for restriction to a compact core (starting from the core profile). -/
-theorem nash_exists_of_OD [Fintype I]
+theorem nash_exists_of_outsideDom [Fintype I]
     (σ : Profile I V)
-    (h_od : ∀ i, G.OutsideDominated i σ) :
+    (h_od : ∀ i, G.OutsideDom i σ) :
     ∃ τ, G.IsNash τ := by
   by_cases h : G.IsNash σ
   · exact ⟨σ, h⟩
   · simp only [IsNash, not_forall, not_not] at h
     obtain ⟨i₀, A, hA⟩ := h
-    obtain ⟨A', hdev, hsub, hne⟩ := exists_restrictingStrictDev G (h_od i₀) hA
+    obtain ⟨A', hdev, hsub, hne⟩ := exists_strictDom_sub G (h_od i₀) hA
     have hdec := profileSize_decreases hsub hne
-    exact nash_exists_of_OD (σ[i₀ ↦ A']) (fun j => by
+    exact nash_exists_of_outsideDom (σ[i₀ ↦ A']) (fun j => by
       by_cases hij : j = i₀
-      · subst hij; exact OutsideDominated.preserved G (h_od j) hsub hdev.1
-      · exact OutsideDominated.preserved_other G hij (h_od j) hsub)
+      · subst hij; exact OutsideDom.preserved G (h_od j) hsub hdev.1
+      · exact OutsideDom.preserved_other G hij (h_od j) hsub)
   termination_by profileSize σ
 
 theorem nash_exists [Fintype I] [∀ i, Fintype (V i)] [∀ i, Nonempty (V i)] :
     ∃ σ, G.IsNash σ :=
-  nash_exists_of_OD G (fun _ => Face.full) (fun i => OutsideDominated.maximal G i)
+  nash_exists_of_outsideDom G (fun _ => Face.full) (fun i => OutsideDom.maximal G i)
 
 -- ================================================================
 -- Section 13: Nash existence with subface and OD tracking
 -- ================================================================
 
-theorem nash_exists_sub_OD [Fintype I]
+theorem nash_exists_sub_of_outsideDom [Fintype I]
     (σ : Profile I V)
-    (h_od : ∀ i, G.OutsideDominated i σ) :
+    (h_od : ∀ i, G.OutsideDom i σ) :
     ∃ τ, G.IsNash τ ∧ (∀ i, Face.IsSubface (τ i) (σ i)) ∧
-      (∀ i, G.OutsideDominated i τ) := by
+      (∀ i, G.OutsideDom i τ) := by
   by_cases h : G.IsNash σ
   · exact ⟨σ, h, fun _ x hx => hx, h_od⟩
   · simp only [IsNash, not_forall, not_not] at h
     obtain ⟨i₀, A, hA⟩ := h
-    obtain ⟨A', hdev, hsub, hne⟩ := exists_restrictingStrictDev G (h_od i₀) hA
+    obtain ⟨A', hdev, hsub, hne⟩ := exists_strictDom_sub G (h_od i₀) hA
     have hdec := profileSize_decreases hsub hne
-    have h_od' : ∀ j, G.OutsideDominated j (σ[i₀ ↦ A']) := fun j => by
+    have h_od' : ∀ j, G.OutsideDom j (σ[i₀ ↦ A']) := fun j => by
       by_cases hij : j = i₀
-      · subst hij; exact OutsideDominated.preserved G (h_od j) hsub hdev.1
-      · exact OutsideDominated.preserved_other G hij (h_od j) hsub
-    obtain ⟨τ, hτN, hτ_sub, hτ_od⟩ := nash_exists_sub_OD (σ[i₀ ↦ A']) h_od'
+      · subst hij; exact OutsideDom.preserved G (h_od j) hsub hdev.1
+      · exact OutsideDom.preserved_other G hij (h_od j) hsub
+    obtain ⟨τ, hτN, hτ_sub, hτ_od⟩ := nash_exists_sub_of_outsideDom (σ[i₀ ↦ A']) h_od'
     refine ⟨τ, hτN, fun j => ?_, hτ_od⟩
     by_cases hji : j = i₀
     · subst hji

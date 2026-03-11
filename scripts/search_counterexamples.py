@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Search for counterexamples to claims about BR/mix behavior in Synthetic Game Theory.
+Search for counterexamples to claims about BR/mix behavior in Discrete Game Theory.
 
 Examples:
   # Random sample 10k 3x3 games and search for a counterexample to BR(mix)=union(BR)

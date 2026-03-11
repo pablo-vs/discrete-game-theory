@@ -19,7 +19,7 @@
   class (positive affine transformations).
 -/
 
-import SyntheticGameTheory.Refinement
+import DiscreteGameTheory.Refinement
 import Mathlib.Order.Monotone.Basic
 
 namespace Invariance

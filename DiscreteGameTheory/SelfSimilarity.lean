@@ -8,13 +8,13 @@ can be at different resolution levels).
 
 ## Overview
 
-- Section 1: Iterated embedding (iterEmbed) from level k to level k+n
+- Section 1: Iterated embedding (embedIter) from level k to level k+n
 - Section 2: Game restriction via injections
 - Section 3: Multi-level game (per-player independence)
 - Section 4: Abstract morphisms (top/bottom embeddings)
 - Section 5: Grid child embeddings (concrete left/right children)
 -/
-import SyntheticGameTheory.Refinement
+import DiscreteGameTheory.Refinement
 
 open Base (Sign Face cmpSign)
 open Refinement
@@ -31,70 +31,70 @@ variable {I : Type*} [DecidableEq I] [Fintype I]
     The output type T.V (k+n) works because Lean's Nat.add is defined
     recursively on the second argument, so k+(n+1) = (k+n)+1 holds
     definitionally. -/
-def iterEmbed (T : GeneralSignTower I) (k n : ℕ) (i : I) : T.V k i → T.V (k + n) i :=
+def embedIter (T : GeneralSignTower I) (k n : ℕ) (i : I) : T.V k i → T.V (k + n) i :=
   match n with
   | 0 => id
-  | n + 1 => T.embed (k + n) i ∘ T.iterEmbed k n i
+  | n + 1 => T.embed (k + n) i ∘ T.embedIter k n i
 
-@[simp] theorem iterEmbed_zero (T : GeneralSignTower I) (k : ℕ) (i : I) :
-    T.iterEmbed k 0 i = id := rfl
+@[simp] theorem embedIter_zero (T : GeneralSignTower I) (k : ℕ) (i : I) :
+    T.embedIter k 0 i = id := rfl
 
-theorem iterEmbed_succ (T : GeneralSignTower I) (k n : ℕ) (i : I) :
-    T.iterEmbed k (n + 1) i = T.embed (k + n) i ∘ T.iterEmbed k n i := rfl
+theorem embedIter_succ (T : GeneralSignTower I) (k n : ℕ) (i : I) :
+    T.embedIter k (n + 1) i = T.embed (k + n) i ∘ T.embedIter k n i := rfl
 
-theorem iterEmbed_one (T : GeneralSignTower I) (k : ℕ) (i : I) :
-    T.iterEmbed k 1 i = T.embed k i := by
-  ext v; simp [iterEmbed]
+theorem embedIter_one (T : GeneralSignTower I) (k : ℕ) (i : I) :
+    T.embedIter k 1 i = T.embed k i := by
+  ext v; simp [embedIter]
 
-theorem iterEmbed_inj (T : GeneralSignTower I) (k n : ℕ) (i : I) :
-    Function.Injective (T.iterEmbed k n i) := by
+theorem embedIter_inj (T : GeneralSignTower I) (k n : ℕ) (i : I) :
+    Function.Injective (T.embedIter k n i) := by
   induction n with
   | zero => exact Function.injective_id
   | succ n ih =>
-    rw [iterEmbed_succ]
+    rw [embedIter_succ]
     exact Function.Injective.comp (T.embed_inj (k + n) i) ih
 
-theorem iterEmbed_between (T : GeneralSignTower I) (k n : ℕ) (i : I)
+theorem embedIter_between (T : GeneralSignTower I) (k n : ℕ) (i : I)
     (a b c : T.V k i)
     (h : (T.betw k i).between c a b) :
-    (T.betw (k + n) i).between (T.iterEmbed k n i c)
-      (T.iterEmbed k n i a) (T.iterEmbed k n i b) := by
+    (T.betw (k + n) i).between (T.embedIter k n i c)
+      (T.embedIter k n i a) (T.embedIter k n i b) := by
   induction n with
   | zero => exact h
   | succ n ih =>
-    rw [iterEmbed_succ]; simp only [Function.comp]
+    rw [embedIter_succ]; simp only [Function.comp]
     exact T.embed_between (k + n) i _ _ _ ih
 
 /-- Key coherence theorem: the sign at level k+n, evaluated on
-    iterEmbed'd level-k arguments, equals the sign at level k. -/
-theorem coherent_iterEmbed (T : GeneralSignTower I) (k n : ℕ) (i : I)
+    embedIter'd level-k arguments, equals the sign at level k. -/
+theorem coherent_embedIter (T : GeneralSignTower I) (k n : ℕ) (i : I)
     (p : Base.PureProfile I (T.V k)) (a b : T.V k i) :
     (T.game (k + n)).sign i
-      (fun j => T.iterEmbed k n j (p j))
-      (T.iterEmbed k n i a) (T.iterEmbed k n i b) =
+      (fun j => T.embedIter k n j (p j))
+      (T.embedIter k n i a) (T.embedIter k n i b) =
     (T.game k).sign i p a b := by
   induction n with
   | zero => rfl
   | succ n ih =>
     change (T.game ((k + n) + 1)).sign i
-      (fun j => T.embed (k + n) j (T.iterEmbed k n j (p j)))
-      (T.embed (k + n) i (T.iterEmbed k n i a))
-      (T.embed (k + n) i (T.iterEmbed k n i b)) = _
-    have h1 : (fun j => T.embed (k + n) j (T.iterEmbed k n j (p j))) =
-        embedPureProfile (T.embed (k + n)) (fun j => T.iterEmbed k n j (p j)) := rfl
+      (fun j => T.embed (k + n) j (T.embedIter k n j (p j)))
+      (T.embed (k + n) i (T.embedIter k n i a))
+      (T.embed (k + n) i (T.embedIter k n i b)) = _
+    have h1 : (fun j => T.embed (k + n) j (T.embedIter k n j (p j))) =
+        embedPureProfile (T.embed (k + n)) (fun j => T.embedIter k n j (p j)) := rfl
     rw [h1, T.coherent, ih]
 
 /-- Embed a pure profile from level k to level k+n. -/
-def iterEmbedPureProfile (T : GeneralSignTower I) (k n : ℕ)
+def embedIterPureProfile (T : GeneralSignTower I) (k n : ℕ)
     (p : Base.PureProfile I (T.V k)) :
     Base.PureProfile I (T.V (k + n)) :=
-  fun j => T.iterEmbed k n j (p j)
+  fun j => T.embedIter k n j (p j)
 
 /-- Embed a face from level k to level k+n. -/
-def iterEmbedFace (T : GeneralSignTower I) (k n : ℕ) (i : I)
+def embedIterFace (T : GeneralSignTower I) (k n : ℕ) (i : I)
     (F : Face (T.V k i)) :
     Face (T.V (k + n) i) :=
-  embedFace (T.iterEmbed k n i) (T.iterEmbed_inj k n i) F
+  embedFace (T.embedIter k n i) (T.embedIter_inj k n i) F
 
 end Refinement.GeneralSignTower
 
@@ -124,14 +124,14 @@ theorem restrictGame_sign {W : I → Type*} [∀ i, DecidableEq (W i)]
     (restrictGame G f).sign i p a b =
     G.sign i (fun j => f j (p j)) (f i a) (f i b) := rfl
 
-/-- Restricting a tower's game at level k+n via iterEmbed from level k
+/-- Restricting a tower's game at level k+n via embedIter from level k
     gives the same signs as the game at level k. -/
-theorem restrictGame_iterEmbed_eq
+theorem restrictGame_embedIter_eq
     (T : Refinement.GeneralSignTower I) (k n : ℕ)
     (i : I) (p : Base.PureProfile I (T.V k)) (a b : T.V k i) :
-    (restrictGame (T.game (k + n)) (fun j => T.iterEmbed k n j)).sign i p a b =
+    (restrictGame (T.game (k + n)) (fun j => T.embedIter k n j)).sign i p a b =
     (T.game k).sign i p a b := by
-  simp [restrictGame_sign, T.coherent_iterEmbed k n i p a b]
+  simp [restrictGame_sign, T.coherent_embedIter k n i p a b]
 
 end SelfSimilarity
 
@@ -193,18 +193,18 @@ theorem multiLevelGame_sign_irrel (T : GeneralSignTower I)
     (T.multiLevelGame κ).sign i p₂ a b := by
   exact (T.multiLevelGame κ).sign_irrel i p₁ p₂ a b hp
 
-/-- The multi-level sign is coherent with iterEmbed: embedding player i's
+/-- The multi-level sign is coherent with embedIter: embedding player i's
     actions from level k to level k+n doesn't change the game's sign,
     when the multi-level game is set up with the right levels. -/
 theorem multiLevelGame_coherent_embed (T : GeneralSignTower I) (k n : ℕ)
     (i : I) (p : Base.PureProfile I (T.V k)) (a b : T.V k i) :
     (T.multiLevelGame (fun _ => k + n)).sign i
-      (fun j => T.iterEmbed k n j (p j))
-      (T.iterEmbed k n i a)
-      (T.iterEmbed k n i b) =
+      (fun j => T.embedIter k n j (p j))
+      (T.embedIter k n i a)
+      (T.embedIter k n i b) =
     (T.multiLevelGame (fun _ => k)).sign i p a b := by
   simp [multiLevelGame]
-  exact T.coherent_iterEmbed k n i p a b
+  exact T.coherent_embedIter k n i p a b
 
 end Refinement.GeneralSignTower
 

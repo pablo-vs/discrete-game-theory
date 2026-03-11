@@ -1,4 +1,4 @@
-# Synthetic Game Theory in Lean 4
+# Discrete Game Theory in Lean 4
 
 A machine-checked formalization of finite game theory without real numbers, probability, or fixed-point theorems. Nash equilibria are computed by a terminating descent algorithm on finite face lattices.
 
@@ -16,9 +16,9 @@ Requires Lean 4 and Mathlib. The `lakefile` handles dependency resolution.
 
 **Face.** A mixed strategy is a *face* — a nonempty finite subset of actions — replacing probability distributions. The face `{a, b}` represents "some distribution over `a` and `b`" without specifying which one. Mixing is set union: commutative, associative, idempotent.
 
-**DevFaceLE.** Face `A` dominates face `B` for player `i` when every action in `A` beats every action in `B` against every consistent opponent action. This conservative comparison produces a *partial* order — incomparability breaks deviation cycles and enables mixed Nash equilibria.
+**Dominates.** Face `A` dominates face `B` for player `i` when every action in `A` beats every action in `B` against every consistent opponent action. This conservative comparison produces a *partial* order — incomparability breaks deviation cycles and enables mixed Nash equilibria.
 
-**Nash existence via OD descent.** The algorithm maintains the *OutsideDominated* invariant (every excluded action is dominated by every included action) while shrinking faces:
+**Nash existence via OD descent.** The algorithm finds Nash equilibria starting from the maximally mixed profile and eliminating dominated actions. It maintains the *OutsideDom* invariant (every excluded action is dominated by every included action) while shrinking faces:
 
 ```
   Start: sigma = (full, full, ..., full)    [OD holds vacuously]
@@ -44,12 +44,12 @@ Profile size (sum of face cardinalities) is a natural number that strictly decre
 
 | File | Purpose | Key exports |
 |------|---------|-------------|
-| `Base.lean` | Core theory | `Sign`, `Face`, `SignGame`, `DevFaceLE`, `IsNash`, `nash_exists` |
+| `Base.lean` | Core theory | `Sign`, `Face`, `SignGame`, `Dominates`, `IsNash`, `nash_exists` |
 | `Examples.lean` | Classic 2x2 and 3-player games | `genPD`, `genMP`, `genSH`, `genBoS`, `coordGame3` |
-| `Compact.lean` | Abstract `Game` structure, core restriction | `MixtureAlgebra`, `Game`, `toGame`, `nash_of_core` |
+| `CompactGame.lean` | Compact games as towers, OD propagation | `CompactGame`, `iterEmbedClose`, `shift`, `nash_of_core` |
 | `Refinement.lean` | Tower of refining sign games | `GeneralSignTower`, `nash_refining_sequence` |
 | `Invariance.lean` | Ordinal vs cardinal invariance | `ofPayoffs_strictMono_invariant`, `counterexample_level2` |
-| `SelfSimilarity.lean` | Tower decomposition | `iterEmbed`, `restrictGame`, `multiLevelGame` |
+| `SelfSimilarity.lean` | Tower decomposition | `embedIter`, `restrictGame`, `multiLevelGame` |
 | `BilinearExamples.lean` | Concrete 2-player towers | `GenBilinearTower`, PD/MP/SymCoord/BoS towers |
 
 ## Base.lean — Core Theory
@@ -65,17 +65,17 @@ PureProfile I V         -- forall i, V i
 Profile I V             -- forall i, Face (V i)
 ConsistentAt sigma i p  -- forall j != i, p j in (sigma j)
 SignGame I V            -- sign function + refl/antisym/trans/irrel axioms
-DevFaceLE i sigma A B   -- A weakly dominates B for player i in context sigma
+Dominates i sigma A B   -- A weakly dominates B for player i in context sigma
   .trans / .antitone / .mono_left / .mono_right
-StrictDev i sigma A     -- DevFaceLE A (sigma i) and not DevFaceLE (sigma i) A
-IsNash sigma            -- forall i A, not StrictDev i sigma A
-OutsideDominated i sigma -- every excluded action dominated by every included
+StrictDom i sigma A     -- Dominates A (sigma i) and not Dominates (sigma i) A
+IsNash sigma            -- forall i A, not StrictDom i sigma A
+OutsideDom i sigma -- every excluded action dominated by every included
   .maximal              -- full profile is vacuously OD
   .preserved            -- OD preserved when player i restricts
   .preserved_other      -- OD preserved for other players j != i
-exists_restrictingStrictDev -- strict dev can be restricted to subface of sigma_i
+exists_restrictingStrictDom -- strict dev can be restricted to subface of sigma_i
 profileSize_decreases   -- restriction strictly decreases profile size
-nash_exists_of_OD       -- Nash from any OD-satisfying profile (main algorithm)
+nash_exists_of_outsideDom       -- Nash from any OD-satisfying profile (main algorithm)
 nash_exists             -- Nash for any finite game
 ofPayoffs               -- construct SignGame from payoff functions
 IsPureNash              -- pure strategy Nash equilibrium
@@ -105,14 +105,19 @@ D  5,0  1,1           T  0,1  1,0          H  3,0  3,3          F  0,0  2,3
 - `symGame2x2`, `game2x2_rank`: readable game constructors from ranking functions
 - `pd_rank`, `pd_rank_alt`, `pd_same_game`: ordinal invariance example
 
-## Compact.lean — Abstract Game & Core Restriction
+## CompactGame.lean — Compact Games as Towers
+
+A compact game is a `GeneralSignTower`. OD profiles propagate through towers, and shift re-roots a tower to capture meta-game interpretation.
 
 ```
-MixtureAlgebra S        -- class: mix with comm/idem/assoc
-Game I                  -- structure: strategy spaces + contextual preference
-  .StrictPref / .IsNash
-SignGame.toGame         -- bridge: Nash definitions agree by rfl
+CompactGame I           -- abbrev for GeneralSignTower I
 SignGame.nash_of_core   -- Nash exists if a finite core satisfies OD
+iterEmbedClose T k σ n  -- lift OD profile from level k to level k+n
+  outsideDom_iterEmbedClose   -- OD propagates through iteration
+  nash_inside_iterEmbedClose  -- Nash at higher levels lives inside core
+shift T k               -- re-root tower at level k (meta-game = shift by 1)
+compactMP / metaMP      -- MP tower as compact game / shifted
+mpNat / mpNat_nash      -- infinite-action MP on ℕ with OD core {0,1}
 lowerIsBetter           -- example: infinite game on Nat, lower index preferred
 ```
 
@@ -141,7 +146,7 @@ GeneralSignTower I      -- structure with fields:
   playerConvex_left/right, opponentConvex  -- convexity axioms
   fine_between_embedded_at  -- spanning axiom
 
-DevFaceLE_convCloseProfile  -- DevFaceLE preserved under convex closure
+Dominates_convCloseProfile  -- Dominates preserved under convex closure
 OD_embed_convClosure    -- OD transfers from coarse to fine level (key result)
 nash_refining_sequence  -- Nash + OD + convex-closed at every level k
 nash_at_next_level_refines -- fine Nash refines coarse Nash
@@ -164,8 +169,8 @@ Limit k -> infinity: recovers the von Neumann-Morgenstern uniqueness class.
 ## SelfSimilarity.lean — Tower Structure
 
 ```
-iterEmbed k n i         -- iterate embedding n times from level k
-coherent_iterEmbed      -- signs at level k+n match level k on embedded args
+embedIter k n i         -- iterate embedding n times from level k
+coherent_embedIter      -- signs at level k+n match level k on embedded args
 restrictGame G f        -- restrict sign game via per-player injections
 multiLevelGame T kappa  -- per-player independent levels
 leftChild / rightChild  -- grid splits into two halves at midpoint
@@ -196,3 +201,9 @@ Mathlib imports:
 - `Mathlib.Algebra.Order.BigOperators.Group.Finset`
 - `Mathlib.Tactic.FinCases`
 - `Mathlib.Order.Monotone.Basic`
+
+
+## Authorship
+
+Most of the high-level theory and definitions are my own, but Claude wrote
+almost all of the code and this file, with some contributions from Codex and Gemini. 

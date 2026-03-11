@@ -1,4 +1,8 @@
-# Synthetic Game Theory
+# Discrete Game Theory
+
+<!-- Code references: DiscreteGameTheory/<file>.lean#L<start>-L<end>
+     To make clickable, prepend your repo URL: https://github.com/OWNER/REPO/blob/main/ -->
+
 
 #### Summary
 
@@ -10,9 +14,9 @@ This post describes a simplified version that throws away the real numbers entir
 
 Why care?
 
-- **Programs playing games.** When each game is described by discrete, finite data, it becomes much easier to reason formally about programs that play games. The theory of *program equilibrium* built on top of synthetic game theory will be explained in a following post.
+- **Programs playing games.** When each game is described by discrete, finite data, it becomes much easier to reason formally about programs that play games. The theory of *program equilibrium* built on top of discrete game theory will be explained in a following post.
 - **Formal verification.** Everything here is formalized in Lean 4 and machine-checked. None of the proofs require nonconstructive fixed-point theorems or sophisticated analysis — the Nash existence proof is a simple terminating algorithm.
-- **Mathematical patterns.** The formalization illustrates a structural parallel between continuous and discrete mathematics: the same abstract pattern (monotone maps on structured spaces have fixed points) appears in both the standard and synthetic theories, just instantiated in different categories.
+- **Mathematical patterns.** The formalization illustrates a structural parallel between continuous and discrete mathematics: the same abstract pattern (monotone maps on structured spaces have fixed points) appears in both the standard and discrete theories, just instantiated in different categories.
 
 All code blocks below are from the Lean formalization. They typecheck.
 
@@ -28,6 +32,7 @@ A game has a finite set of players $I$. Each player $i$ has a finite set of acti
 variable (I : Type*) (V : I → Type*)
 abbrev PureProfile := ∀ i : I, V i
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L172-L175 -->
 
 $$p \in \prod_{i \in I} V_i$$
 
@@ -41,6 +46,7 @@ inductive Sign where
   | neg : Sign
   | zero : Sign
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L16-L19 -->
 
 A sign game bundles these signs together with the axioms you'd expect of a preference relation: comparing an action to itself gives zero (reflexivity), swapping the two actions flips the sign (antisymmetry), and the ordering is transitive. There's one more axiom, `sign_irrel`, which says that player $i$'s preference between their own actions $a$ and $b$ depends only on what the *other* players are doing — not on what player $i$ "was" playing. This is natural: the sign compares two hypothetical choices for player $i$, so $i$'s "current" action shouldn't matter.
 
@@ -53,6 +59,7 @@ structure SignGame where
     (sign i p a c).nonneg
   sign_irrel : ∀ i p q a b, (∀ j, j ≠ i → p j = q j) → sign i p a b = sign i q a b
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L203-L209 -->
 
 A sign game is a function $s_i(p, a, b) \in \{+, -, 0\}$ for each player $i$, profile $p$, and pair of actions $a, b \in V_i$, satisfying:
 
@@ -83,6 +90,7 @@ def pd_rank (me opp : Bool) : ℕ :=
 
 def genPD := symGame2x2 pd_rank
 ```
+<!-- source: DiscreteGameTheory/Examples.lean#L213-L220 -->
 
 To be clear: the numbers 0, 1, 2, 3 are not payoffs. They're just a compact way of writing down an ordering. Any other numbers with the same ordering produce the same game:
 
@@ -97,6 +105,7 @@ def pd_rank_alt (me opp : Bool) : ℕ :=
 theorem pd_same_game :
     (symGame2x2 pd_rank).sign = (symGame2x2 pd_rank_alt).sign
 ```
+<!-- source: DiscreteGameTheory/Examples.lean#L228-L239 -->
 
 We'll prove this in general shortly — it's one of the main theorems.
 
@@ -120,6 +129,7 @@ theorem genPD_unique_pureNash :
     ∀ p : PureProfile (Fin 2) (fun _ : Fin 2 => Bool),
     genPD.IsPureNash p ↔ p = (fun _ => false)
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L504-L505 + DiscreteGameTheory/Examples.lean#L131-L133 -->
 
 
 ## The problem with pure strategies
@@ -139,6 +149,7 @@ def genMP := game2x2_rank
 
 theorem genMP_no_pureNash : ∀ p, ¬genMP.IsPureNash p
 ```
+<!-- source: DiscreteGameTheory/Examples.lean#L245-L261 -->
 
 Whatever pure profile you pick, one player wants to switch. The response "map" cycles: H→T→H→T→... The standard solution is to let players randomize their actions.
 
@@ -164,6 +175,7 @@ def full [Fintype V] [Nonempty V] : Face V :=
 def mix (A B : Face V) : Face V :=
   ⟨A.1 ∪ B.1, A.2.mono Finset.subset_union_left⟩
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L117-L136 -->
 
 $$\text{Face}(V) = \{ S \subseteq V \mid S \neq \emptyset \}$$
 $$\text{vertex}(v) = \{v\} \qquad \text{full} = V \qquad \text{mix}(A, B) = A \cup B$$
@@ -173,12 +185,14 @@ theorem mix_comm (A B : Face V) : mix A B = mix B A
 theorem mix_idem (A : Face V) : mix A A = A
 theorem mix_assoc (A B C : Face V) : mix (mix A B) C = mix A (mix B C)
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L140-L147 -->
 
 We were working with pure profiles so far, in which every player plays a pure action. A general profile is now a choice of face for each player:
 
 ```lean
 abbrev Profile := ∀ i : I, Face (V i)
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L175 -->
 
 $$\sigma \in \prod_{i \in I} \text{Face}(V_i)$$
 
@@ -189,10 +203,11 @@ In standard game theory, players compare mixed strategies using expected utility
 We need an analogous comparison for faces. The idea is conservative: face $A$ dominates face $B$ for player $i$ (written $A \geq B$) only when *every* action in $A$ is at least as good as *every* action in $B$, no matter what the opponents do within their current faces. The condition "opponents play within their faces" is named `ConsistentAt σ i p` — it says every opponent $j \neq i$ has $p_j \in \sigma_j$.
 
 ```lean
-def DevFaceLE (i : I) (σ : Profile I V) (A B : Face (V i)) : Prop :=
+def Dominates (i : I) (σ : Profile I V) (A B : Face (V i)) : Prop :=
   ∀ a ∈ A.1, ∀ p : PureProfile I V,
     ConsistentAt σ i p → ∀ b ∈ B.1, (G.sign i p a b).nonneg
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L225-L227 -->
 
 $$A \geq_i^\sigma B \;\;\iff\;\; \forall a \in A,\; \forall p \in \textstyle\prod_{j \neq i} \sigma_j,\; \forall b \in B,\quad s_i(p, a, b) \geq 0$$
 
@@ -207,21 +222,23 @@ Matching Pennies makes this concrete. When both players mix fully (every action 
 ```lean
 theorem genMP_partial_order :
     let σ : Profile (Fin 2) (fun _ : Fin 2 => Bool) := fun _ => Face.full
-    ¬genMP.DevFaceLE 0 σ (Face.vertex true) (Face.vertex false) ∧
-    ¬genMP.DevFaceLE 0 σ (Face.vertex false) (Face.vertex true)
+    ¬genMP.Dominates 0 σ (Face.vertex true) (Face.vertex false) ∧
+    ¬genMP.Dominates 0 σ (Face.vertex false) (Face.vertex true)
 ```
+<!-- source: DiscreteGameTheory/Examples.lean#L162-L174 -->
 
 Why? When the opponent plays Heads, player 0 prefers Heads. When the opponent plays Tails, player 0 prefers Tails. Since the opponent's face includes both, neither dominates — the comparison is ambiguous. This partiality is exactly what we need: it means **mixing creates incomparability, and incomparability breaks cycles.**
 
 So we can define strict deviations for mixed profiles as well, and Nash equilibria are just the absence of any strict deviation for any player:
 
 ```lean
-def StrictDev (i : I) (σ : Profile I V) (A : Face (V i)) : Prop :=
-  G.DevFaceLE i σ A (σ i) ∧ ¬G.DevFaceLE i σ (σ i) A
+def StrictDom (i : I) (σ : Profile I V) (A : Face (V i)) : Prop :=
+  G.Dominates i σ A (σ i) ∧ ¬G.Dominates i σ (σ i) A
 
 def IsNash (σ : ∀ j, G.S j) : Prop :=
   ∀ i s, ¬G.StrictPref i σ s (σ i)
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L273-L278 + DiscreteGameTheory/Compact.lean#L59-L60 -->
 Player $i$ has a strict deviation to $A$ from profile $\sigma$ when $A \geq_i^\sigma \sigma_i$ but $\sigma_i \not\geq_i^\sigma A$.
 
 $$\text{IsNash}(\sigma) \;\;\iff\;\; \forall i \in I,\; \forall A \in \text{Face}(V_i),\quad \neg\big(A >_i^\sigma \sigma_i\big)$$
@@ -231,6 +248,7 @@ In the Matching Pennies deviation graph among pure profiles, we saw a cycle: H b
 ```lean
 theorem genMP_mixed_nash : genMP.IsNash (fun _ : Fin 2 => Face.full (V := Bool))
 ```
+<!-- source: DiscreteGameTheory/Examples.lean#L149-L158 -->
 
 
 
@@ -242,6 +260,7 @@ We can now state and prove the main theorem: every finite game has a Nash equili
 theorem nash_exists [Fintype I] [∀ i, Fintype (V i)] [∀ i, Nonempty (V i)] :
     ∃ σ, G.IsNash σ
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L432-L434 -->
 
 $$\forall G,\; \exists \sigma \in \textstyle\prod_i \text{Face}(V_i),\quad \text{IsNash}(\sigma)$$
 
@@ -253,21 +272,22 @@ Before diving into the algorithm, let's see why Nash equilibria must exist at al
 
 In the standard theory: the space of mixed profiles is a product of simplices (compact, convex). The best-response correspondence is a map from this space to itself, and it's continuous in the right sense (upper hemicontinuous with convex values). Kakutani's fixed-point theorem says: continuous self-maps of compact convex sets have fixed points.
 
-Here: the space of profiles is a product of face lattices (finite, with joins). The domination relation `DevFaceLE` is monotone/antitone in the lattice operations — enlarging an opponent's face makes domination harder (antitone in opponents), and subfaces of a dominating face still dominate (monotone in the player's own face). This is the lattice-theoretic analogue of continuity: preservation of the lattice structure, the way continuous maps preserve limits.
+Here: the space of profiles is a product of face lattices (finite, with joins). The domination relation `Dominates` is monotone/antitone in the lattice operations — enlarging an opponent's face makes domination harder (antitone in opponents), and subfaces of a dominating face still dominate (monotone in the player's own face). This is the lattice-theoretic analogue of continuity: preservation of the lattice structure, the way continuous maps preserve limits.
 
-Both proofs follow the same template: **the strategic structure respects the geometry of the mixing space, and that's enough to guarantee equilibrium.** The standard theory uses topological continuity on a compact convex set. The synthetic theory uses order-theoretic monotonicity on a finite lattice. The standard proof invokes a fixed-point theorem. The synthetic proof constructs the fixed point directly by descent — which is the constructive version of the same argument, made possible by finiteness.
+Both proofs follow the same template: **the strategic structure respects the geometry of the mixing space, and that's enough to guarantee equilibrium.** The standard theory uses topological continuity on a compact convex set. The discrete theory uses order-theoretic monotonicity on a finite lattice. The standard proof invokes a fixed-point theorem. The discrete proof constructs the fixed point directly by descent — which is the constructive version of the same argument, made possible by finiteness.
 
 ### The algorithm
 
 The algorithm maintains two invariants:
 
-1. **OutsideDominated (OD):** For each player $i$, every action *outside* the current face is dominated by every action *inside* the face. Intuitively: we've already checked that the removed actions are genuinely worse.
+1. **OutsideDom (OD):** For each player $i$, every action *outside* the current face is dominated by every action *inside* the face. Intuitively: we've already checked that the removed actions are genuinely worse.
 
 ```lean
-def OutsideDominated (i : I) (σ : Profile I V) : Prop :=
+def OutsideDom (i : I) (σ : Profile I V) : Prop :=
   ∀ v, v ∉ (σ i).1 → ∀ w, w ∈ (σ i).1 →
-    G.DevFaceLE i σ (Face.vertex w) (Face.vertex v)
+    G.Dominates i σ (Face.vertex w) (Face.vertex v)
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L285-L287 -->
 
 $$\text{OD}_i(\sigma) \;\;\iff\;\; \forall v \notin \sigma_i,\; \forall w \in \sigma_i,\quad \{w\} \geq_i^\sigma \{v\}$$
 
@@ -277,27 +297,30 @@ $$\text{OD}_i(\sigma) \;\;\iff\;\; \forall v \notin \sigma_i,\; \forall w \in \s
 def profileSize [Fintype I] (σ : Profile I V) : ℕ :=
   Finset.univ.sum (fun i => (σ i).1.card)
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L391-L392 -->
 
 $$|\sigma| = \sum_{i \in I} |\sigma_i|$$
 
 **Start:** The full profile — every player plays every action — is vacuously OD (there are no outside actions to check).
 
 ```lean
-theorem OutsideDominated.maximal (i : I)
+theorem OutsideDom.maximal (i : I)
     [∀ j, Fintype (V j)] [∀ j, Nonempty (V j)] :
-    G.OutsideDominated i (fun _ => Face.full) :=
+    G.OutsideDom i (fun _ => Face.full) :=
   fun v hv => absurd (Finset.mem_univ v) hv
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L296-L299 -->
 
 **Loop:** If the current profile $\sigma$ is already Nash, we're done. If not, some player $i$ has a strict deviation to some face $A$. The key lemma is that we can *restrict* this deviation: there exists a face $A' \subseteq \sigma_i$ with $A' \neq \sigma_i$ such that $A'$ is still a strict deviation.
 
 ```lean
-theorem exists_restrictingStrictDev {i : I} {σ : Profile I V} {A : Face (V i)}
-    (h_inv : G.OutsideDominated i σ)
-    (h_dev : G.StrictDev i σ A) :
+theorem exists_restrictingStrictDom {i : I} {σ : Profile I V} {A : Face (V i)}
+    (h_inv : G.OutsideDom i σ)
+    (h_dev : G.StrictDom i σ A) :
     ∃ A' : Face (V i),
-      G.StrictDev i σ A' ∧ Face.IsSubface A' (σ i) ∧ A' ≠ σ i
+      G.StrictDom i σ A' ∧ Face.IsSubface A' (σ i) ∧ A' ≠ σ i
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L364-L368 -->
 
 We replace $\sigma_i$ with $A'$, which is strictly smaller. Profile size decreases.
 
@@ -306,50 +329,54 @@ theorem profileSize_decreases [Fintype I] {i : I} {σ : Profile I V} {A : Face (
     (hsub : Face.IsSubface A (σ i)) (hne : A ≠ σ i) :
     profileSize (Function.update σ i A) < profileSize σ
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L395-L397 -->
 
 **Preservation of OD:** Crucially, the OD invariant is preserved across the update. For the player $i$ who just changed, this holds because $A'$ dominates $\sigma_i$, so it certainly dominates the actions outside $\sigma_i$ (which were already dominated). For other players $j \neq i$, this holds by antitonicity: shrinking player $i$'s face only makes domination *easier* for other players (fewer opponent actions to worry about).
 
 ```lean
-theorem OutsideDominated.preserved {i : I} {σ : Profile I V} {A : Face (V i)}
-    (h_inv : G.OutsideDominated i σ)
+theorem OutsideDom.preserved {i : I} {σ : Profile I V} {A : Face (V i)}
+    (h_inv : G.OutsideDom i σ)
     (h_sub : Face.IsSubface A (σ i))
-    (h_dev : G.DevFaceLE i σ A (σ i)) :
-    G.OutsideDominated i (Function.update σ i A)
+    (h_dev : G.Dominates i σ A (σ i)) :
+    G.OutsideDom i (Function.update σ i A)
 
-theorem OutsideDominated.preserved_other {i j : I} (hij : j ≠ i)
+theorem OutsideDom.preserved_other {i j : I} (hij : j ≠ i)
     {σ : Profile I V} {A : Face (V i)}
-    (h_inv : G.OutsideDominated j σ)
+    (h_inv : G.OutsideDom j σ)
     (h_sub : Face.IsSubface A (σ i)) :
-    G.OutsideDominated j (Function.update σ i A)
+    G.OutsideDom j (Function.update σ i A)
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L303-L338 -->
 
 **Termination:** Profile size is a natural number that decreases each step. So the algorithm terminates, producing a Nash equilibrium.
 
 ```lean
-theorem nash_exists_of_OD [Fintype I]
+theorem nash_exists_of_outsideDom [Fintype I]
     (σ : Profile I V)
-    (h_od : ∀ i, G.OutsideDominated i σ) :
+    (h_od : ∀ i, G.OutsideDom i σ) :
     ∃ τ, G.IsNash τ := by
   by_cases h : G.IsNash σ
   · exact ⟨σ, h⟩
   · simp only [IsNash, not_forall, not_not] at h
     obtain ⟨i₀, A, hA⟩ := h
-    obtain ⟨A', hdev, hsub, hne⟩ := exists_restrictingStrictDev G (h_od i₀) hA
+    obtain ⟨A', hdev, hsub, hne⟩ := exists_restrictingStrictDom G (h_od i₀) hA
     have hdec := profileSize_decreases hsub hne
-    exact nash_exists_of_OD (Function.update σ i₀ A') (fun j => by
+    exact nash_exists_of_outsideDom (Function.update σ i₀ A') (fun j => by
       by_cases hij : j = i₀
-      · subst hij; exact OutsideDominated.preserved G (h_od j) hsub hdev.1
-      · exact OutsideDominated.preserved_other G hij (h_od j) hsub)
+      · subst hij; exact OutsideDom.preserved G (h_od j) hsub hdev.1
+      · exact OutsideDom.preserved_other G hij (h_od j) hsub)
   termination_by profileSize σ
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L416-L430 -->
 
 The full theorem follows by starting from the full profile:
 
 ```lean
 theorem nash_exists [Fintype I] [∀ i, Fintype (V i)] [∀ i, Nonempty (V i)] :
     ∃ σ, G.IsNash σ :=
-  nash_exists_of_OD G (fun _ => Face.full) (fun i => OutsideDominated.maximal G i)
+  nash_exists_of_outsideDom G (fun _ => Face.full) (fun i => OutsideDom.maximal G i)
 ```
+<!-- source: DiscreteGameTheory/Base.lean#L432-L434 -->
 
 ### A 3-player example
 
@@ -368,6 +395,7 @@ def coordGame3 : SignGame (Fin 3) (fun _ : Fin 3 => Bool) where
 theorem coordGame3_nash_allTrue : coordGame3.IsPureNash (fun _ => true)
 theorem coordGame3_nash_allFalse : coordGame3.IsPureNash (fun _ => false)
 ```
+<!-- source: DiscreteGameTheory/Examples.lean#L97-L120 -->
 
 Both "everyone plays true" and "everyone plays false" are Nash — and the general `nash_exists` theorem guarantees that at least one equilibrium exists for any finite game, without us having to find it explicitly.
 
@@ -401,6 +429,7 @@ theorem ofPayoffs_strictMono_invariant [Fintype I]
     (f : (i : I) → Int → Int) (hf : ∀ i, StrictMono (f i)) :
     SignGame.ofPayoffs (fun i q => f i (u i q)) = SignGame.ofPayoffs u
 ```
+<!-- source: DiscreteGameTheory/Invariance.lean#L57-L60 -->
 
 $$\forall i,\; f_i \text{ strictly monotone} \;\;\Rightarrow\;\; \text{Game}(f_i \circ u_i) = \text{Game}(u_i)$$
 
@@ -413,6 +442,7 @@ theorem pd_same_sign_game :
     SignGame.ofPayoffs pdPayoff' =
     SignGame.ofPayoffs pdPayoff (I := Fin 2) (V := fun _ : Fin 2 => Bool)
 ```
+<!-- source: DiscreteGameTheory/Invariance.lean#L129-L134 -->
 
 ## The refinement tower
 
@@ -426,6 +456,7 @@ abbrev gridSize (k : ℕ) : ℕ := 2 ^ k + 1
 def gridEmbed (k : ℕ) (j : Fin (gridSize k)) : Fin (gridSize (k + 1)) :=
   ⟨2 * j.val, by grid_omega⟩
 ```
+<!-- source: DiscreteGameTheory/Refinement.lean#L132-L143 -->
 
 Each grid point represents a possible "mixing ratio." Grid point $j$ at level $k$ represents the probability $j / 2^k$. The level-$k$ grid is embedded into the level-$(k+1)$ grid by $j \mapsto 2j$ — doubling the index, which preserves the ratio since $j/2^k = 2j/2^{k+1}$.
 
@@ -443,6 +474,7 @@ structure GeneralSignTower (I : Type*) [DecidableEq I] [Fintype I] where
     = (game k).sign i p a b
   -- plus: betweenness, convexity, embedding, and spanning axioms
 ```
+<!-- source: DiscreteGameTheory/Refinement.lean#L246-L288 -->
 
 A tower is a sequence of games $(G_k)_{k \geq 0}$ on action sets $(V_k)_{k \geq 0}$ with embeddings $e_k : V_k \hookrightarrow V_{k+1}$ satisfying coherence:
 
@@ -462,6 +494,7 @@ def bilinearSignGame (n : ℕ) (oppSign₀ oppSign₁ : Fin n → Sign) :
     if (i : ℕ) = 0 then Sign.mul (cmpSign b.val a.val) (oppSign₀ opp)
     else Sign.mul (cmpSign b.val a.val) (oppSign₁ opp)
 ```
+<!-- source: DiscreteGameTheory/BilinearExamples.lean#L44-L55 -->
 
 The sign is a product of two factors: the comparison between the two actions (which one has a higher index, representing "more mixing toward one pure strategy"), and the "opponent sign" — which depends on which grid point the opponent is at. The opponent sign tells you *which direction* of mixing is favorable, given the opponent's position.
 
@@ -478,6 +511,7 @@ theorem affine_preserves_oppSign (c D slope : ℕ) (hslope : 0 < slope) (k : ℕ
     (j : Fin (gridSize k)) :
     cmpSign (slope * c * j.val) (slope * D * 2^k) = cmpSign (c * j.val) (D * 2^k)
 ```
+<!-- source: DiscreteGameTheory/Invariance.lean#L154-L160 -->
 
 But non-affine monotone transformations can change the signs. Here's a concrete example: consider a game where the indifference point is at probability $p = 2/5$. The original signs use $\text{cmpSign}(5j, 2 \cdot 2^k)$. Applying $g(x) = x^3$ to the payoffs shifts the indifference point to $p = 8/35 \approx 0.229$, giving signs $\text{cmpSign}(35j, 8 \cdot 2^k)$.
 
@@ -488,6 +522,7 @@ theorem counterexample_level2 :
     exampleOppSign 2 ⟨1, by grid_omega⟩ = .pos ∧
     transformedOppSign 2 ⟨1, by grid_omega⟩ = .neg
 ```
+<!-- source: DiscreteGameTheory/Invariance.lean#L183-L186 -->
 
 The first game says "action A is better at $p = 1/4$" (the indifference point $2/5$ is above $1/4$, so we're in A's region). The transformed game says "action B is better at $p = 1/4$" (the indifference point $8/35$ is below $1/4$, so we've crossed into B's region). Yet at level 0, they agree:
 
@@ -496,6 +531,7 @@ theorem signs_agree_level0 :
     exampleOppSign 0 ⟨0, by grid_omega⟩ = transformedOppSign 0 ⟨0, by grid_omega⟩ ∧
     exampleOppSign 0 ⟨1, by grid_omega⟩ = transformedOppSign 0 ⟨1, by grid_omega⟩
 ```
+<!-- source: DiscreteGameTheory/Invariance.lean#L190-L193 -->
 
 So the tower interpolates between the ordinal and cardinal theories. At level 0, the invariance group is all strictly monotone transformations (very large). At each level, the grid gets finer, and the invariance group shrinks — fewer transformations preserve all the signs. In the limit as $k \to \infty$, the grid becomes dense, and the only transformations that preserve signs at *every* level are the positive affine maps $f(x) = \alpha x + \beta$ with $\alpha > 0$. This is exactly the von Neumann–Morgenstern uniqueness class for expected utility.
 
@@ -507,9 +543,10 @@ The tower structure lets us prove something strong: Nash equilibria at coarser l
 theorem nash_refining_sequence (k : ℕ) :
     ∃ σ : Profile I (T.V k),
       (T.game k).IsNash σ ∧
-      (∀ i, (T.game k).OutsideDominated i σ) ∧
-      T.IsConvexClosed k σ
+      (∀ i, (T.game k).OutsideDom i σ) ∧
+      T.HasConvexFaces k σ
 ```
+<!-- source: DiscreteGameTheory/Refinement.lean#L648-L652 -->
 
 At every level $k$, there exists a Nash equilibrium that's OD and convex-closed (its faces are convex in the grid's betweenness structure). Moreover, Nash equilibria at adjacent levels are compatible:
 
@@ -521,6 +558,7 @@ theorem nash_at_next_level_refines (k : ℕ) :
       (T.game (k+1)).IsNash σ' ∧
       T.ProfileRefines k σ' σ
 ```
+<!-- source: DiscreteGameTheory/Refinement.lean#L683-L688 -->
 
 The fine-level Nash equilibrium refines the coarse-level one: each player's face at the fine level is contained within the convex closure of the embedded coarse face. The equilibrium "zooms in" — it narrows down which part of each player's mixing interval is in play.
 
@@ -533,13 +571,14 @@ The proof works by:
 The key technical result is that the OD invariant transfers across levels: if every player is OD at the coarse level, then every player is still OD at the fine level after embedding and convex closure.
 
 ```lean
-theorem OD_embed_convClosure (k : ℕ)
+theorem outsideDom_embed_convClosure (k : ℕ)
     {σ : Profile I (T.V k)}
-    (h_od : ∀ i, (T.game k).OutsideDominated i σ) (i : I) :
-    (T.game (k+1)).OutsideDominated i
-      (T.convCloseProfile (k+1)
+    (h_od : ∀ i, (T.game k).OutsideDom i σ) (i : I) :
+    (T.game (k+1)).OutsideDom i
+      (T.convexClosureProfile (k+1)
         (embedProfile (T.embed k) (T.embed_inj k) σ))
 ```
+<!-- source: DiscreteGameTheory/Refinement.lean#L568-L573 -->
 
 This is where the convexity axioms earn their keep. The proof needs to show that the embedded face dominates points outside the convex closure. It uses player convexity (betweenness in the player's own actions preserves the sign) and opponent convexity (betweenness in opponents' actions preserves the sign) to extend domination from the embedded grid points to all the midpoints.
 
@@ -552,22 +591,24 @@ The refinement tower has a self-similar structure. A level-$k$ game can be seen 
 The single-step embedding from level $k$ to level $k+1$ can be iterated:
 
 ```lean
-def iterEmbed (T : GeneralSignTower I) (k n : ℕ) (i : I) : T.V k i → T.V (k + n) i :=
+def embedIter (T : GeneralSignTower I) (k n : ℕ) (i : I) : T.V k i → T.V (k + n) i :=
   match n with
   | 0 => id
-  | n + 1 => T.embed (k + n) i ∘ T.iterEmbed k n i
+  | n + 1 => T.embed (k + n) i ∘ T.embedIter k n i
 ```
+<!-- source: DiscreteGameTheory/SelfSimilarity.lean#L34-L37 -->
 
 And the coherence property extends: signs at level $k + n$, evaluated on iterated embeddings of level-$k$ arguments, equal the signs at level $k$.
 
 ```lean
-theorem coherent_iterEmbed (T : GeneralSignTower I) (k n : ℕ) (i : I)
+theorem coherent_embedIter (T : GeneralSignTower I) (k n : ℕ) (i : I)
     (p : PureProfile I (T.V k)) (a b : T.V k i) :
     (T.game (k + n)).sign i
-      (fun j => T.iterEmbed k n j (p j))
-      (T.iterEmbed k n i a) (T.iterEmbed k n i b) =
+      (fun j => T.embedIter k n j (p j))
+      (T.embedIter k n i a) (T.embedIter k n i b) =
     (T.game k).sign i p a b
 ```
+<!-- source: DiscreteGameTheory/SelfSimilarity.lean#L70-L75 -->
 
 $$s_i^{(k+n)}(e^n(p),\; e^n(a),\; e^n(b)) \;=\; s_i^{(k)}(p, a, b)$$
 
@@ -580,16 +621,18 @@ def restrictGame {W : I → Type*} [∀ i, DecidableEq (W i)]
     (G : SignGame I V) (f : ∀ i, W i → V i) : SignGame I W where
   sign i p a b := G.sign i (fun j => f j (p j)) (f i a) (f i b)
 ```
+<!-- source: DiscreteGameTheory/SelfSimilarity.lean#L111-L118 -->
 
 By coherence, this restricted game has exactly the same signs as the original coarse game:
 
 ```lean
-theorem restrictGame_iterEmbed_eq
+theorem restrictGame_embedIter_eq
     (T : GeneralSignTower I) (k n : ℕ)
     (i : I) (p : PureProfile I (T.V k)) (a b : T.V k i) :
-    (restrictGame (T.game (k + n)) (fun j => T.iterEmbed k n j)).sign i p a b =
+    (restrictGame (T.game (k + n)) (fun j => T.embedIter k n j)).sign i p a b =
     (T.game k).sign i p a b
 ```
+<!-- source: DiscreteGameTheory/SelfSimilarity.lean#L129-L134 -->
 
 So every "subtree" of the refinement tower — obtained by picking a starting level and restricting — behaves exactly like a game at that level. The tower is self-similar: the same structure repeats at every scale.
 
@@ -604,6 +647,7 @@ def leftChild (k : ℕ) (j : Fin (gridSize k)) : Fin (gridSize (k + 1)) :=
 def rightChild (k : ℕ) (j : Fin (gridSize k)) : Fin (gridSize (k + 1)) :=
   ⟨j.val + 2 ^ k, by grid_omega⟩
 ```
+<!-- source: DiscreteGameTheory/SelfSimilarity.lean#L250-L256 -->
 
 The left child maps grid point $j$ to itself (it occupies the first half). The right child maps grid point $j$ to $j + 2^k$ (shifting to the second half). They share a boundary point:
 
@@ -611,6 +655,7 @@ The left child maps grid point $j$ to itself (it occupies the first half). The r
 theorem boundary_shared (k : ℕ) :
     leftChild k ⟨2 ^ k, _⟩ = rightChild k ⟨0, _⟩
 ```
+<!-- source: DiscreteGameTheory/SelfSimilarity.lean#L311-L313 -->
 
 The last point of the left child is the first point of the right child. This is the tree branching: a level-$(k+1)$ interval $[0, 2^{k+1}]$ splits at its midpoint $2^k$ into two copies of a level-$k$ interval.
 
@@ -622,6 +667,7 @@ A surprising consequence of the tower structure: different players can operate a
 noncomputable def multiLevelGame (T : GeneralSignTower I) (κ : I → ℕ) :
     SignGame I (fun i => T.V (κ i) i)
 ```
+<!-- source: DiscreteGameTheory/SelfSimilarity.lean#L156-L161 -->
 
 If player 0 is at level 3 and player 1 is at level 7, the sign for each player is determined by their own level — because `sign_irrel` ensures the sign depends only on opponents' actions, and the opponents' types are handled by coherence.
 
@@ -629,6 +675,7 @@ If player 0 is at level 3 and player 1 is at level 7, the sign for each player i
 theorem multiLevelGame_nash_exists (T : GeneralSignTower I) (κ : I → ℕ) :
     ∃ σ, (T.multiLevelGame κ).IsNash σ
 ```
+<!-- source: DiscreteGameTheory/SelfSimilarity.lean#L178-L180 -->
 
 Nash equilibria exist in multi-level games too. And the multi-level sign is coherent with embedding:
 
@@ -636,11 +683,12 @@ Nash equilibria exist in multi-level games too. And the multi-level sign is cohe
 theorem multiLevelGame_coherent_embed (T : GeneralSignTower I) (k n : ℕ)
     (i : I) (p : PureProfile I (T.V k)) (a b : T.V k i) :
     (T.multiLevelGame (fun _ => k + n)).sign i
-      (fun j => T.iterEmbed k n j (p j))
-      (T.iterEmbed k n i a)
-      (T.iterEmbed k n i b) =
+      (fun j => T.embedIter k n j (p j))
+      (T.embedIter k n i a)
+      (T.embedIter k n i b) =
     (T.multiLevelGame (fun _ => k)).sign i p a b
 ```
+<!-- source: DiscreteGameTheory/SelfSimilarity.lean#L199-L207 -->
 
 ### Level 0 determines everything
 
@@ -664,18 +712,19 @@ Each tower comes with a proof that Nash equilibria exist at every level, are OD,
 ```lean
 theorem genPdTower_nash_sequence :
     ∀ k, ∃ σ, (genPdTower.game k).IsNash σ ∧
-      (∀ i, (genPdTower.game k).OutsideDominated i σ) ∧
-      genPdTower.toGeneralSignTower.IsConvexClosed k σ
+      (∀ i, (genPdTower.game k).OutsideDom i σ) ∧
+      genPdTower.toGeneralSignTower.HasConvexFaces k σ
 ```
+<!-- source: DiscreteGameTheory/BilinearExamples.lean#L308-L312 -->
 
 ---
 
 ## Looking ahead
 
-The synthetic theory — level-0 sign games with the face lattice — captures all the strategic content of standard game theory, without real numbers or probability. The refinement tower shows exactly how the cardinal information emerges: it's a sequence of binary choices (what sign does each new midpoint get?) that progressively narrows the class of compatible utility functions from "all monotone transformations" down to "positive affine transformations only."
+The discrete theory — level-0 sign games with the face lattice — captures all the strategic content of standard game theory, without real numbers or probability. The refinement tower shows exactly how the cardinal information emerges: it's a sequence of binary choices (what sign does each new midpoint get?) that progressively narrows the class of compatible utility functions from "all monotone transformations" down to "positive affine transformations only."
 
 There's a suggestive analogy here. The natural numbers $\mathbb{N}$ are the simplest structure with a point and a nontrivial endomorphism: $0$ and the successor function $S$. The "model" of $\mathbb{N}$ is just a point and an arrow $\cdot \to \cdot$. But iterated application of the arrow produces the entire infinite chain $0 \to 1 \to 2 \to \cdots$, and the one-step chain $\cdot \to \cdot$ simultaneously describes every step.
 
 Similarly, the level-0 theory (a game with finite actions and an ordering) is the simplest structure with the right properties (a finite lattice and monotone operations). The refinement tower is what you get by "unrolling" — repeatedly applying the refinement operation. But the level-0 theory already describes every level, because it can model any finite grid game by treating grid points as actions. The tower is not new information; it's a controlled way of unpacking what was already there.
 
-In the next post, we'll use this synthetic theory as the foundation for *program equilibrium*: what happens when each player is a computer program that can read and reason about the other players' code.
+In the next post, we'll use this discrete theory as the foundation for *program equilibrium*: what happens when each player is a computer program that can read and reason about the other players' code.

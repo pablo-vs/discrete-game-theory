@@ -1,4 +1,4 @@
-import SyntheticGameTheory.Base
+import DiscreteGameTheory.Base
 
 namespace Base
 
@@ -157,12 +157,12 @@ theorem genMP_mixed_nash : genMP.IsNash (fun _ : Fin 2 => Face.full (V := Bool))
   have h2 := hfwd a ha (fun _ => false) (hcon _) (!a) (Finset.mem_univ _)
   fin_cases i <;> cases a <;> simp_all [genMP, game2x2, intSign, Sign.nonneg]
 
-/-- The DevFaceLE ordering is partial on mixed profiles: in Matching Pennies,
+/-- The Dominates ordering is partial on mixed profiles: in Matching Pennies,
     neither {H} nor {T} dominates the other when the opponent mixes. -/
 theorem genMP_partial_order :
     let σ : Profile (Fin 2) (fun _ : Fin 2 => Bool) := fun _ => Face.full
-    ¬genMP.DevFaceLE 0 σ (Face.vertex true) (Face.vertex false) ∧
-    ¬genMP.DevFaceLE 0 σ (Face.vertex false) (Face.vertex true) := by
+    ¬genMP.Dominates 0 σ (Face.vertex true) (Face.vertex false) ∧
+    ¬genMP.Dominates 0 σ (Face.vertex false) (Face.vertex true) := by
   refine ⟨fun h => ?_, fun h => ?_⟩
   · have := h true (Finset.mem_singleton_self _) (fun _ => false)
       (fun _ _ => Finset.mem_univ _ : ConsistentAt _ (0 : Fin 2) _)

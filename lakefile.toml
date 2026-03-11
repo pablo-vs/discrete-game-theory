@@ -1,12 +1,17 @@
-name = "synthetic_game_theory"
+name = "discrete_game_theory"
 version = "0.1.0"
-defaultTargets = ["SyntheticGameTheory"]
+defaultTargets = ["DiscreteGameTheory"]
 
 [[lean_lib]]
-name = "SyntheticGameTheory"
-globs = ["SyntheticGameTheory", "SyntheticGameTheory.+"]
+name = "DiscreteGameTheory"
+globs = ["DiscreteGameTheory", "DiscreteGameTheory.+"]
 
 [[require]]
 name = "mathlib"
 scope = "leanprover-community"
+rev = "v4.27.0"
+
+[[require]]
+name = "verso"
+git = "https://github.com/leanprover/verso.git"
 rev = "v4.27.0"

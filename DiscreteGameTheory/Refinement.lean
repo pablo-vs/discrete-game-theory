@@ -8,15 +8,15 @@ refined to level k+1, for arbitrary numbers of players and actions.
 
 Layer A: Betweenness and convex closure on abstract grids
 Layer B: GeneralSignTower structure with embedding and convexity axioms
-Layer C: Transfer theorems (DevFaceLE under closure, OD transfer)
+Layer C: Transfer theorems (Dominates under closure, OD transfer)
 Layer D: Nash refinement sequence
 -/
-import SyntheticGameTheory.Base
+import DiscreteGameTheory.Base
 
 namespace Refinement
 
 open Base (Sign Face cmpSign)
-open Base.SignGame (DevFaceLE OutsideDominated)
+open Base.SignGame (Dominates OutsideDom)
 
 -- ================================================================
 -- Layer A: Betweenness and Convex Closure
@@ -303,14 +303,14 @@ instance instBW (k : ℕ) (i : I) : Betweenness (T.V k i) := T.betw k i
 -- Convex closure for profiles (close each player's face)
 -- ----------------------------------------------------------------
 
-def convCloseProfile (k : ℕ)
+def convexClosureProfile (k : ℕ)
     (σ : Base.Profile I (T.V k)) :
     Base.Profile I (T.V k) :=
   fun i => @convClosure (T.V k i) (T.instDecEq k i) (T.instFintype k i)
     (T.betw k i) (σ i)
 
 -- Helper: abbreviation for convClosure at a specific tower level/player
-def cc (k : ℕ) (i : I) (F : Face (T.V k i)) : Face (T.V k i) :=
+def faceClosure (k : ℕ) (i : I) (F : Face (T.V k i)) : Face (T.V k i) :=
   @convClosure (T.V k i) (T.instDecEq k i) (T.instFintype k i) (T.betw k i) F
 
 -- ================================================================
@@ -321,13 +321,13 @@ def cc (k : ℕ) (i : I) (F : Face (T.V k i)) : Face (T.V k i) :=
 -- C.0: Helper lemmas
 -- ----------------------------------------------------------------
 
-/-- DevFaceLE is insensitive to player i's own face in the profile,
+/-- Dominates is insensitive to player i's own face in the profile,
     since consistency only checks opponents j ≠ i. -/
-theorem DevFaceLE_update_self (k : ℕ) {i : I}
+theorem Dominates_update_self (k : ℕ) {i : I}
     {σ : Base.Profile I (T.V k)} {F : Face (T.V k i)}
     {A B : Face (T.V k i)} :
-    (T.game k).DevFaceLE i (Function.update σ i F) A B ↔
-    (T.game k).DevFaceLE i σ A B := by
+    (T.game k).Dominates i (Function.update σ i F) A B ↔
+    (T.game k).Dominates i σ A B := by
   constructor
   · intro h a ha p hp b hb
     exact h a ha p (fun m hm => by
@@ -336,31 +336,31 @@ theorem DevFaceLE_update_self (k : ℕ) {i : I}
     exact h a ha p (fun m hm => by
       have := hp m hm; rw [Function.update_of_ne hm] at this; exact this) b hb
 
-/-- If v is between embed(w₀) and embed(b), w₀ ∈ F, and v ∉ cc(embed(F)),
-    then b ∉ F. (If b ∈ F, both endpoints are inside cc, so v ∈ cc by
+/-- If v is between embed(w₀) and embed(b), w₀ ∈ F, and v ∉ faceClosure(embed(F)),
+    then b ∉ F. (If b ∈ F, both endpoints are inside faceClosure, so v ∈ faceClosure by
     convexity, contradicting the hypothesis.) -/
 theorem outside_betw_witness_outside (k : ℕ) (i : I)
     (F : Face (T.V k i)) (w₀ : T.V k i) (hw₀ : w₀ ∈ F.val)
     (v : T.V (k+1) i)
-    (hv : v ∉ (T.cc (k+1) i (embedFace (T.embed k i) (T.embed_inj k i) F)).val)
+    (hv : v ∉ (T.faceClosure (k+1) i (embedFace (T.embed k i) (T.embed_inj k i) F)).val)
     (b : T.V k i)
     (hbetw : (T.betw (k+1) i).between v (T.embed k i w₀) (T.embed k i b)) :
     b ∉ F.val := by
   intro hb
   apply hv
-  set ccF := T.cc (k+1) i (embedFace (T.embed k i) (T.embed_inj k i) F)
+  set ccF := T.faceClosure (k+1) i (embedFace (T.embed k i) (T.embed_inj k i) F)
   exact IsConvex_convClosure _ _ (face_sub_closure _ (Finset.mem_map_of_mem _ hw₀))
     _ (face_sub_closure _ (Finset.mem_map_of_mem _ hb)) v hbetw
 
 -- ----------------------------------------------------------------
--- C.1: DevFaceLE preserved under convex closure of player faces
+-- C.1: Dominates preserved under convex closure of player faces
 -- ----------------------------------------------------------------
 
-/-- DevFaceLE preserved under convex closure of the left (player) face. -/
-theorem DevFaceLE_convClosure_left (k : ℕ) {i : I}
+/-- Dominates preserved under convex closure of the left (player) face. -/
+theorem Dominates_convClosure_left (k : ℕ) {i : I}
     {σ : Base.Profile I (T.V k)} {A B : Face (T.V k i)}
-    (h : (T.game k).DevFaceLE i σ A B) :
-    (T.game k).DevFaceLE i σ (T.cc k i A) B := by
+    (h : (T.game k).Dominates i σ A B) :
+    (T.game k).Dominates i σ (T.faceClosure k i A) B := by
   intro a ha p hp b hb
   set S := Finset.univ.filter (fun v => ((T.game k).sign i p v b).nonneg)
   have hAS : A.val ⊆ S := fun v hv =>
@@ -370,11 +370,11 @@ theorem DevFaceLE_convClosure_left (k : ℕ) {i : I}
       (Finset.mem_filter.mp hv₁).2 (Finset.mem_filter.mp hv₂).2⟩
   exact (Finset.mem_filter.mp (convClosure_sub_of_convex A S hAS hSconv ha)).2
 
-/-- DevFaceLE preserved under convex closure of the right (player) face. -/
-theorem DevFaceLE_convClosure_right (k : ℕ) {i : I}
+/-- Dominates preserved under convex closure of the right (player) face. -/
+theorem Dominates_convClosure_right (k : ℕ) {i : I}
     {σ : Base.Profile I (T.V k)} {A B : Face (T.V k i)}
-    (h : (T.game k).DevFaceLE i σ A B) :
-    (T.game k).DevFaceLE i σ A (T.cc k i B) := by
+    (h : (T.game k).Dominates i σ A B) :
+    (T.game k).Dominates i σ A (T.faceClosure k i B) := by
   intro a ha p hp b hb
   set S := Finset.univ.filter (fun v => ((T.game k).sign i p a v).nonneg)
   have hBS : B.val ⊆ S := fun v hv =>
@@ -385,16 +385,16 @@ theorem DevFaceLE_convClosure_right (k : ℕ) {i : I}
   exact (Finset.mem_filter.mp (convClosure_sub_of_convex B S hBS hSconv hb)).2
 
 -- ----------------------------------------------------------------
--- C.2: DevFaceLE preserved under convex closure of a single opponent
+-- C.2: Dominates preserved under convex closure of a single opponent
 -- ----------------------------------------------------------------
 
-/-- DevFaceLE preserved when closing a single opponent's face. -/
-theorem DevFaceLE_convClosure_opp (k : ℕ) {i : I} (j : I) (hj : j ≠ i)
+/-- Dominates preserved when closing a single opponent's face. -/
+theorem Dominates_convClosure_opp (k : ℕ) {i : I} (j : I) (hj : j ≠ i)
     {σ : Base.Profile I (T.V k)} {A B : Face (T.V k i)}
-    (h : (T.game k).DevFaceLE i σ A B) :
-    (T.game k).DevFaceLE i (Function.update σ j (T.cc k j (σ j))) A B := by
+    (h : (T.game k).Dominates i σ A B) :
+    (T.game k).Dominates i (Function.update σ j (T.faceClosure k j (σ j))) A B := by
   intro a ha p hp b hb
-  have hpj : p j ∈ (T.cc k j (σ j)).val := by
+  have hpj : p j ∈ (T.faceClosure k j (σ j)).val := by
     have := hp j hj; rwa [Function.update_self] at this
   set S := Finset.univ.filter (fun v => ((T.game k).sign i (Function.update p j v) a b).nonneg)
   have hσS : (σ j).val ⊆ S := by
@@ -424,27 +424,27 @@ theorem DevFaceLE_convClosure_opp (k : ℕ) {i : I} (j : I) (hj : j ≠ i)
 -- C.3: Fubini — close ALL opponent faces
 -- ----------------------------------------------------------------
 
-/-- DevFaceLE preserved under convex closure of all players' faces. -/
-theorem DevFaceLE_convCloseProfile (k : ℕ) {i : I}
+/-- Dominates preserved under convex closure of all players' faces. -/
+theorem Dominates_convexClosureProfile (k : ℕ) {i : I}
     {σ : Base.Profile I (T.V k)} {A B : Face (T.V k i)}
-    (h : (T.game k).DevFaceLE i σ A B) :
-    (T.game k).DevFaceLE i (T.convCloseProfile k σ) A B := by
+    (h : (T.game k).Dominates i σ A B) :
+    (T.game k).Dominates i (T.convexClosureProfile k σ) A B := by
   -- Close opponents one at a time via Finset.induction (Fubini argument)
   -- Define τ_S: profile with opponents in S closed
   set τ : Finset I → Base.Profile I (T.V k) :=
-    fun S j => if j ∈ S then T.cc k j (σ j) else σ j
-  -- For all S ⊆ {j ≠ i}, DevFaceLE i (τ S) A B
+    fun S j => if j ∈ S then T.faceClosure k j (σ j) else σ j
+  -- For all S ⊆ {j ≠ i}, Dominates i (τ S) A B
   suffices key : ∀ S : Finset I, (∀ j ∈ S, j ≠ i) →
-      (T.game k).DevFaceLE i (τ S) A B by
+      (T.game k).Dominates i (τ S) A B by
     -- Apply with S = univ.filter (· ≠ i), then handle player i
     have hfull := key (Finset.univ.filter (· ≠ i)) (fun j hj => by simp at hj; exact hj)
-    -- convCloseProfile σ differs from τ(...) only at position i
-    -- DevFaceLE only uses opponents, so the difference at i is irrelevant
+    -- convexClosureProfile σ differs from τ(...) only at position i
+    -- Dominates only uses opponents, so the difference at i is irrelevant
     intro a ha p hp b hb
     apply hfull a ha p _ b hb
     intro m hm
     have := hp m hm
-    -- τ(univ.filter(· ≠ i)) m = cc(σ m) since m ≠ i
+    -- τ(univ.filter(· ≠ i)) m = faceClosure(σ m) since m ≠ i
     show p m ∈ (τ (Finset.univ.filter (· ≠ i)) m).val
     simp only [τ, Finset.mem_filter, Finset.mem_univ, true_and]
     rw [if_pos hm]
@@ -457,14 +457,14 @@ theorem DevFaceLE_convCloseProfile (k : ℕ) {i : I}
     have hS' : ∀ m ∈ S', m ≠ i := fun m hm => hS m (Finset.mem_insert_of_mem hm)
     have base := ih hS'
     have hτj : (τ S') j = σ j := by simp [τ, hj]
-    -- τ (insert j S') = (τ S')[j := cc(σ j)]
+    -- τ (insert j S') = (τ S')[j := faceClosure(σ j)]
     -- Apply single-opponent closure
-    suffices h_eq : τ (insert j S') = Function.update (τ S') j (T.cc k j ((τ S') j)) by
-      rw [h_eq]; exact T.DevFaceLE_convClosure_opp k j hjne base
+    suffices h_eq : τ (insert j S') = Function.update (τ S') j (T.faceClosure k j ((τ S') j)) by
+      rw [h_eq]; exact T.Dominates_convClosure_opp k j hjne base
     rw [hτj]; funext m
     by_cases hm : m = j
     · subst hm; simp [τ, hj, Function.update_self]
-    · have := Function.update_of_ne hm (T.cc k j (σ j)) (τ S')
+    · have := Function.update_of_ne hm (T.faceClosure k j (σ j)) (τ S')
       rw [this]; simp [τ, Finset.mem_insert, hm]
 
 -- ----------------------------------------------------------------
@@ -472,49 +472,49 @@ theorem DevFaceLE_convCloseProfile (k : ℕ) {i : I}
 -- ----------------------------------------------------------------
 
 /-- Closing all faces preserves Nash. -/
-theorem IsNash_convCloseProfile (k : ℕ)
+theorem IsNash_convexClosureProfile (k : ℕ)
     {σ : Base.Profile I (T.V k)}
     (hN : (T.game k).IsNash σ) :
-    (T.game k).IsNash (T.convCloseProfile k σ) := by
-  set τ := T.convCloseProfile k σ
+    (T.game k).IsNash (T.convexClosureProfile k σ) := by
+  set τ := T.convexClosureProfile k σ
   intro i A hSD
-  -- hSD : StrictDev i τ A, i.e., DevFaceLE i τ A (τ i) ∧ ¬DevFaceLE i τ (τ i) A
+  -- hSD : StrictDom i τ A, i.e., Dominates i τ A (τ i) ∧ ¬Dominates i τ (τ i) A
   apply hN i A
   constructor
-  · -- Forward: DevFaceLE i σ A (σ i)
-    -- From hSD.1: DevFaceLE i τ A (cc(σ i))
-    -- right_mono with σ i ⊆ cc(σ i): DevFaceLE i τ A (σ i)
-    -- antitone with σ j ⊆ τ j: DevFaceLE i σ A (σ i)
-    exact DevFaceLE.antitone (T.game k) (fun j _ => face_sub_closure (σ j))
-      (DevFaceLE.mono_right (T.game k) (face_sub_closure (σ i)) hSD.1)
-  · -- Backward: ¬DevFaceLE i σ (σ i) A
+  · -- Forward: Dominates i σ A (σ i)
+    -- From hSD.1: Dominates i τ A (faceClosure(σ i))
+    -- right_mono with σ i ⊆ faceClosure(σ i): Dominates i τ A (σ i)
+    -- antitone with σ j ⊆ τ j: Dominates i σ A (σ i)
+    exact Dominates.antitone (T.game k) (fun j _ => face_sub_closure (σ j))
+      (Dominates.mono_right (T.game k) (face_sub_closure (σ i)) hSD.1)
+  · -- Backward: ¬Dominates i σ (σ i) A
     intro hback
-    exact hSD.2 (T.DevFaceLE_convCloseProfile k (T.DevFaceLE_convClosure_left k hback))
+    exact hSD.2 (T.Dominates_convexClosureProfile k (T.Dominates_convClosure_left k hback))
 
 -- ----------------------------------------------------------------
 -- C.5: OD preserved under convex closure
 -- ----------------------------------------------------------------
 
-/-- Closing all faces preserves OutsideDominated for all players. -/
-theorem OutsideDominated_convCloseProfile (k : ℕ)
+/-- Closing all faces preserves OutsideDom for all players. -/
+theorem OutsideDom_convexClosureProfile (k : ℕ)
     {σ : Base.Profile I (T.V k)}
-    (h_od : ∀ j, (T.game k).OutsideDominated j σ) (i : I) :
-    (T.game k).OutsideDominated i (T.convCloseProfile k σ) := by
-  set τ := T.convCloseProfile k σ
+    (h_od : ∀ j, (T.game k).OutsideDom j σ) (i : I) :
+    (T.game k).OutsideDom i (T.convexClosureProfile k σ) := by
+  set τ := T.convexClosureProfile k σ
   intro v' hv' w' hw'
-  -- v' ∉ cc(σ i), w' ∈ cc(σ i). Need DevFaceLE i τ (vertex w') (vertex v').
+  -- v' ∉ faceClosure(σ i), w' ∈ faceClosure(σ i). Need Dominates i τ (vertex w') (vertex v').
   have hv'_σ : v' ∉ (σ i).val := fun hv_mem => hv' (face_sub_closure (σ i) hv_mem)
-  -- For each w₀ ∈ σ i: DevFaceLE i τ (vertex w₀) (vertex v')
+  -- For each w₀ ∈ σ i: Dominates i τ (vertex w₀) (vertex v')
   have h_ext : ∀ w₀ ∈ (σ i).val,
-      (T.game k).DevFaceLE i τ (Face.vertex w₀) (Face.vertex v') :=
-    fun w₀ hw₀ => T.DevFaceLE_convCloseProfile k (h_od i v' hv'_σ w₀ hw₀)
-  -- Unfold DevFaceLE: need sign(p, w', v') ≥ 0 for all consistent p
+      (T.game k).Dominates i τ (Face.vertex w₀) (Face.vertex v') :=
+    fun w₀ hw₀ => T.Dominates_convexClosureProfile k (h_od i v' hv'_σ w₀ hw₀)
+  -- Unfold Dominates: need sign(p, w', v') ≥ 0 for all consistent p
   intro a ha p hp b hb
   simp [Face.vertex] at ha hb
   -- ha : a = w', hb : b = v'
   rw [ha, hb]
   -- Goal: sign(p, w', v') ≥ 0
-  -- Use playerConvex_left: {u : sign(p, u, v') ≥ 0} is convex, contains σ i, so contains cc(σ i)
+  -- Use playerConvex_left: {u : sign(p, u, v') ≥ 0} is convex, contains σ i, so contains faceClosure(σ i)
   set S := Finset.univ.filter (fun u => ((T.game k).sign i p u v').nonneg)
   have hσS : (σ i).val ⊆ S := fun w₀ hw₀ =>
     Finset.mem_filter.mpr ⟨Finset.mem_univ _,
@@ -525,14 +525,14 @@ theorem OutsideDominated_convCloseProfile (k : ℕ)
   exact (Finset.mem_filter.mp (convClosure_sub_of_convex (σ i) S hσS hSconv hw')).2
 
 -- ----------------------------------------------------------------
--- C.6: DevFaceLE transfer across levels (coherence)
+-- C.6: Dominates transfer across levels (coherence)
 -- ----------------------------------------------------------------
 
-/-- Coherence transfers DevFaceLE from coarse to fine (on embedded faces). -/
-theorem DevFaceLE_embed (k : ℕ) {i : I}
+/-- Coherence transfers Dominates from coarse to fine (on embedded faces). -/
+theorem Dominates_embed (k : ℕ) {i : I}
     {σ : Base.Profile I (T.V k)} {A B : Face (T.V k i)}
-    (h : (T.game k).DevFaceLE i σ A B) :
-    (T.game (k+1)).DevFaceLE i
+    (h : (T.game k).Dominates i σ A B) :
+    (T.game (k+1)).Dominates i
       (embedProfile (T.embed k) (T.embed_inj k) σ)
       (embedFace (T.embed k i) (T.embed_inj k i) A)
       (embedFace (T.embed k i) (T.embed_inj k i) B) := by
@@ -564,18 +564,18 @@ theorem DevFaceLE_embed (k : ℕ) {i : I}
 -- ----------------------------------------------------------------
 
 /-- OD at coarse level transfers to OD at
-    convCloseProfile(embedProfile(σ)) at the fine level. -/
-theorem OD_embed_convClosure (k : ℕ)
+    convexClosureProfile(embedProfile(σ)) at the fine level. -/
+theorem outsideDom_embed_convClosure (k : ℕ)
     {σ : Base.Profile I (T.V k)}
-    (h_od : ∀ i, (T.game k).OutsideDominated i σ) (i : I) :
-    (T.game (k+1)).OutsideDominated i
-      (T.convCloseProfile (k+1)
+    (h_od : ∀ i, (T.game k).OutsideDom i σ) (i : I) :
+    (T.game (k+1)).OutsideDom i
+      (T.convexClosureProfile (k+1)
         (embedProfile (T.embed k) (T.embed_inj k) σ)) := by
   set σ' := embedProfile (T.embed k) (T.embed_inj k) σ
-  set σ'' := T.convCloseProfile (k+1) σ'
+  set σ'' := T.convexClosureProfile (k+1) σ'
   intro v' hv' w' hw'
-  -- v' ∉ (σ'' i) = cc(embedFace(σ i)), w' ∈ (σ'' i)
-  -- Need: DevFaceLE i σ'' (vertex w') (vertex v')
+  -- v' ∉ (σ'' i) = faceClosure(embedFace(σ i)), w' ∈ (σ'' i)
+  -- Need: Dominates i σ'' (vertex w') (vertex v')
   -- i.e., ∀ p consistent with σ'', sign(p, w', v') ≥ 0
   intro a ha p hp b hb
   simp [Face.vertex] at ha hb
@@ -586,7 +586,7 @@ theorem OD_embed_convClosure (k : ℕ)
   have step1 : ∀ w₀ ∈ (σ i).val, ∀ v₀ ∉ (σ i).val,
       ((T.game (k+1)).sign i p (T.embed k i w₀) (T.embed k i v₀)).nonneg := by
     intro w₀ hw₀ v₀ hv₀
-    have h_dfle := T.DevFaceLE_convCloseProfile (k+1) (T.DevFaceLE_embed k (h_od i v₀ hv₀ w₀ hw₀))
+    have h_dfle := T.Dominates_convexClosureProfile (k+1) (T.Dominates_embed k (h_od i v₀ hv₀ w₀ hw₀))
     exact h_dfle (T.embed k i w₀)
       (Finset.mem_map_of_mem _ (by simp [Face.vertex]))
       p hp (T.embed k i v₀)
@@ -601,7 +601,7 @@ theorem OD_embed_convClosure (k : ℕ)
       rw [(T.game (k+1)).sign_refl]; exact Sign.nonneg_zero
     exact T.playerConvex_right (k+1) i p (T.embed k i w₀) (T.embed k i b₀) v'
       (T.embed k i w₀) hbetw hrefl (step1 w₀ hw₀ b₀ hb₀)
-  -- Step 3: Extend w from embed(σ i) to cc(embed(σ i)) via playerConvex_left
+  -- Step 3: Extend w from embed(σ i) to faceClosure(embed(σ i)) via playerConvex_left
   set S := Finset.univ.filter (fun u => ((T.game (k+1)).sign i p u v').nonneg)
   have hembS : (σ' i).val ⊆ S := by
     intro u hu
@@ -624,7 +624,7 @@ theorem OD_embed_convClosure (k : ℕ)
 /-- A fine face F' refines a coarse face F if F' ⊆ convClosure(embed(F)). -/
 def FaceRefines (k : ℕ) (i : I)
     (F' : Face (T.V (k+1) i)) (F : Face (T.V k i)) : Prop :=
-  Face.IsSubface F' (T.cc (k+1) i (embedFace (T.embed k i) (T.embed_inj k i) F))
+  Face.IsSubface F' (T.faceClosure (k+1) i (embedFace (T.embed k i) (T.embed_inj k i) F))
 
 /-- A fine profile refines a coarse profile componentwise. -/
 def ProfileRefines (k : ℕ)
@@ -636,7 +636,7 @@ def ProfileRefines (k : ℕ)
 -- D.2: Convex-closed property
 -- ----------------------------------------------------------------
 
-def IsConvexClosed (k : ℕ) (σ : Base.Profile I (T.V k)) : Prop :=
+def HasConvexFaces (k : ℕ) (σ : Base.Profile I (T.V k)) : Prop :=
   ∀ i, @IsConvex (T.V k i) (T.betw k i) (σ i).val
 
 -- ----------------------------------------------------------------
@@ -644,34 +644,34 @@ def IsConvexClosed (k : ℕ) (σ : Base.Profile I (T.V k)) : Prop :=
 -- ----------------------------------------------------------------
 
 /-- At every level k, there exists a Nash equilibrium that is
-    OutsideDominated and convex-closed. -/
+    OutsideDom and convex-closed. -/
 theorem nash_refining_sequence (k : ℕ) :
     ∃ σ : Base.Profile I (T.V k),
       (T.game k).IsNash σ ∧
-      (∀ i, (T.game k).OutsideDominated i σ) ∧
-      T.IsConvexClosed k σ := by
+      (∀ i, (T.game k).OutsideDom i σ) ∧
+      T.HasConvexFaces k σ := by
   induction k with
   | zero =>
     -- Start from full profile, get Nash+OD, close
-    have h_od_full : ∀ i, (T.game 0).OutsideDominated i (fun _ => Face.full) :=
-      fun i => OutsideDominated.maximal (T.game 0) i
-    obtain ⟨τ, hτN, _, hτ_od⟩ := (T.game 0).nash_exists_sub_OD (fun _ => Face.full) h_od_full
-    exact ⟨T.convCloseProfile 0 τ,
-      T.IsNash_convCloseProfile 0 hτN,
-      T.OutsideDominated_convCloseProfile 0 hτ_od,
+    have h_od_full : ∀ i, (T.game 0).OutsideDom i (fun _ => Face.full) :=
+      fun i => OutsideDom.maximal (T.game 0) i
+    obtain ⟨τ, hτN, _, hτ_od⟩ := (T.game 0).nash_exists_sub_of_outsideDom (fun _ => Face.full) h_od_full
+    exact ⟨T.convexClosureProfile 0 τ,
+      T.IsNash_convexClosureProfile 0 hτN,
+      T.OutsideDom_convexClosureProfile 0 hτ_od,
       fun i => IsConvex_convClosure (τ i)⟩
   | succ n ih =>
     obtain ⟨σ_n, hN_n, hOD_n, _⟩ := ih
     -- Embed and close
-    set σ_cl := T.convCloseProfile (n+1) (embedProfile (T.embed n) (T.embed_inj n) σ_n)
+    set σ_cl := T.convexClosureProfile (n+1) (embedProfile (T.embed n) (T.embed_inj n) σ_n)
     -- OD at σ_cl
-    have hOD_cl : ∀ i, (T.game (n+1)).OutsideDominated i σ_cl :=
-      T.OD_embed_convClosure n hOD_n
+    have hOD_cl : ∀ i, (T.game (n+1)).OutsideDom i σ_cl :=
+      T.outsideDom_embed_convClosure n hOD_n
     -- Get Nash ⊆ σ_cl with OD
-    obtain ⟨τ, hτN, _, hτ_od⟩ := (T.game (n+1)).nash_exists_sub_OD σ_cl hOD_cl
-    exact ⟨T.convCloseProfile (n+1) τ,
-      T.IsNash_convCloseProfile (n+1) hτN,
-      T.OutsideDominated_convCloseProfile (n+1) hτ_od,
+    obtain ⟨τ, hτN, _, hτ_od⟩ := (T.game (n+1)).nash_exists_sub_of_outsideDom σ_cl hOD_cl
+    exact ⟨T.convexClosureProfile (n+1) τ,
+      T.IsNash_convexClosureProfile (n+1) hτN,
+      T.OutsideDom_convexClosureProfile (n+1) hτ_od,
       fun i => IsConvex_convClosure (τ i)⟩
 
 -- ----------------------------------------------------------------
@@ -688,21 +688,21 @@ theorem nash_at_next_level_refines (k : ℕ) :
       T.ProfileRefines k σ' σ := by
   obtain ⟨σ_k, hN_k, hOD_k, _⟩ := T.nash_refining_sequence k
   -- Reconstruct a Nash at k+1 that refines σ_k:
-  set σ_cl := T.convCloseProfile (k+1) (embedProfile (T.embed k) (T.embed_inj k) σ_k)
-  have hOD_cl : ∀ i, (T.game (k+1)).OutsideDominated i σ_cl :=
-    T.OD_embed_convClosure k hOD_k
-  obtain ⟨τ, hτN, hτ_sub, hτ_od⟩ := (T.game (k+1)).nash_exists_sub_OD σ_cl hOD_cl
-  set τ' := T.convCloseProfile (k+1) τ
-  refine ⟨σ_k, τ', hN_k, T.IsNash_convCloseProfile (k+1) hτN, fun i => ?_⟩
-  -- FaceRefines: τ' i = cc(τ i) ⊆ cc(σ_cl i) = cc(cc(embed(σ_k i))) = cc(embed(σ_k i))
-  show Face.IsSubface (T.cc (k+1) i (τ i))
-    (T.cc (k+1) i (embedFace (T.embed k i) (T.embed_inj k i) (σ_k i)))
-  have h1 : Face.IsSubface (τ i) (T.cc (k+1) i (embedFace (T.embed k i) (T.embed_inj k i) (σ_k i))) :=
+  set σ_cl := T.convexClosureProfile (k+1) (embedProfile (T.embed k) (T.embed_inj k) σ_k)
+  have hOD_cl : ∀ i, (T.game (k+1)).OutsideDom i σ_cl :=
+    T.outsideDom_embed_convClosure k hOD_k
+  obtain ⟨τ, hτN, hτ_sub, hτ_od⟩ := (T.game (k+1)).nash_exists_sub_of_outsideDom σ_cl hOD_cl
+  set τ' := T.convexClosureProfile (k+1) τ
+  refine ⟨σ_k, τ', hN_k, T.IsNash_convexClosureProfile (k+1) hτN, fun i => ?_⟩
+  -- FaceRefines: τ' i = faceClosure(τ i) ⊆ faceClosure(σ_cl i) = faceClosure(faceClosure(embed(σ_k i))) = faceClosure(embed(σ_k i))
+  show Face.IsSubface (T.faceClosure (k+1) i (τ i))
+    (T.faceClosure (k+1) i (embedFace (T.embed k i) (T.embed_inj k i) (σ_k i)))
+  have h1 : Face.IsSubface (τ i) (T.faceClosure (k+1) i (embedFace (T.embed k i) (T.embed_inj k i) (σ_k i))) :=
     hτ_sub i
-  -- cc(τ i) ⊆ cc(cc(embed(σ_k i))) = cc(embed(σ_k i)) by mono + idempotent
+  -- faceClosure(τ i) ⊆ faceClosure(faceClosure(embed(σ_k i))) = faceClosure(embed(σ_k i)) by mono + idempotent
   intro x hx
   have hx_cc := convClosure_mono h1 hx
-  -- hx_cc : x ∈ cc(cc(embed(σ_k i))), need x ∈ cc(embed(σ_k i))
+  -- hx_cc : x ∈ faceClosure(faceClosure(embed(σ_k i))), need x ∈ faceClosure(embed(σ_k i))
   exact convClosure_sub_of_convex _ _ (fun y hy => hy)
     (IsConvex_convClosure _) hx_cc
 

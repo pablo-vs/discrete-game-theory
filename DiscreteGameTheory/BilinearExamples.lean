@@ -13,7 +13,7 @@ action spaces, using the GeneralSignTower framework from Refinement.
 - Examples: PD, MP, SymCoord, BoS towers with Nash+OD at every level
 -/
 
-import SyntheticGameTheory.Refinement
+import DiscreteGameTheory.Refinement
 
 namespace BilinearExamples
 
@@ -279,8 +279,8 @@ def toGeneralSignTower : GeneralSignTower (Fin 2) where
 theorem nash_sequence :
     ∀ k, ∃ σ : Base.Profile (Fin 2) (fun _ : Fin 2 => Fin (gridSize k)),
       (t.game k).IsNash σ ∧
-      (∀ i, (t.game k).OutsideDominated i σ) ∧
-      t.toGeneralSignTower.IsConvexClosed k σ :=
+      (∀ i, (t.game k).OutsideDom i σ) ∧
+      t.toGeneralSignTower.HasConvexFaces k σ :=
   t.toGeneralSignTower.nash_refining_sequence
 
 /-- Nash refinement at each level. -/
@@ -307,8 +307,8 @@ def genPdTower : GenBilinearTower where
 
 theorem genPdTower_nash_sequence :
     ∀ k, ∃ σ, (genPdTower.game k).IsNash σ ∧
-      (∀ i, (genPdTower.game k).OutsideDominated i σ) ∧
-      genPdTower.toGeneralSignTower.IsConvexClosed k σ :=
+      (∀ i, (genPdTower.game k).OutsideDom i σ) ∧
+      genPdTower.toGeneralSignTower.HasConvexFaces k σ :=
   genPdTower.nash_sequence
 
 -- ================================================================
@@ -350,8 +350,8 @@ def genMpTower : GenBilinearTower where
 
 theorem genMpTower_nash_sequence :
     ∀ k, ∃ σ, (genMpTower.game k).IsNash σ ∧
-      (∀ i, (genMpTower.game k).OutsideDominated i σ) ∧
-      genMpTower.toGeneralSignTower.IsConvexClosed k σ :=
+      (∀ i, (genMpTower.game k).OutsideDom i σ) ∧
+      genMpTower.toGeneralSignTower.HasConvexFaces k σ :=
   genMpTower.nash_sequence
 
 -- ================================================================
@@ -385,8 +385,8 @@ def genSymCoordTower : GenBilinearTower where
 
 theorem genSymCoordTower_nash_sequence :
     ∀ k, ∃ σ, (genSymCoordTower.game k).IsNash σ ∧
-      (∀ i, (genSymCoordTower.game k).OutsideDominated i σ) ∧
-      genSymCoordTower.toGeneralSignTower.IsConvexClosed k σ :=
+      (∀ i, (genSymCoordTower.game k).OutsideDom i σ) ∧
+      genSymCoordTower.toGeneralSignTower.HasConvexFaces k σ :=
   genSymCoordTower.nash_sequence
 
 -- Sign examples at levels 0-2
@@ -435,8 +435,8 @@ def genBosTower : GenBilinearTower where
 
 theorem genBosTower_nash_sequence :
     ∀ k, ∃ σ, (genBosTower.game k).IsNash σ ∧
-      (∀ i, (genBosTower.game k).OutsideDominated i σ) ∧
-      genBosTower.toGeneralSignTower.IsConvexClosed k σ :=
+      (∀ i, (genBosTower.game k).OutsideDom i σ) ∧
+      genBosTower.toGeneralSignTower.HasConvexFaces k σ :=
   genBosTower.nash_sequence
 
 -- Sign examples (player 0 = row, player 1 = column)
