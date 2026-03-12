@@ -24,8 +24,9 @@ structures.
 
 # Sign Games
 
-A game has a finite set of players. Each player has a finite set of actions. A _pure profile_ is
-defined as a choice of action for every player.
+A game has a finite set of players. Each player has a finite set of actions.
+Given an index of players `I: Type` and a function `V: I → Type` of possible actions
+for each player, a _pure profile_ is defined as a choice of action for every player.
 
 ```anchor PureProfile
 /-- A pure profile is a choice of action for each player. -/
@@ -67,7 +68,7 @@ same sign game — the theory is ordinal, not cardinal.
 In standard game theory, players randomize using probability distributions over actions. We use
 a discrete analogue: a _face_ is a nonempty subset of actions.  Intuitively
 a face represents an unknown probability distribution, this intuition will be formalized
-in (TODO reference refinement section)
+in {ref "refinement-towers"}[the refinement chapter].
 
 ```anchor Face
 def Face (V : Type*) [DecidableEq V] := { S : Finset V // S.Nonempty }
@@ -115,20 +116,40 @@ def IsNash (σ : Profile I V) : Prop :=
 
 # Examples
 
-TODO: show payoff orderings for PD and MP, not in code, just as AB < BA-style.
-Then show how they are defined in code, using numbers for convenience. Show
-the full 3x3 Dominance ordering for both players for both games, perhaps with a
-3x3 table and <, <=, =, >=, > or some sign denoting incomparability between each
-pair of cells.
+Consider two classic 2-player games where each player has two actions. We write C/D
+(cooperate/defect) for the Prisoner's Dilemma and H/T (heads/tails) for Matching Pennies.
 
-Use #check isNash to show the Nash equilibria of each game.
+## Prisoner's Dilemma
 
-The Prisoner's Dilemma has a unique pure Nash at mutual defection:
+For each player, defection is strictly preferred regardless of the opponent's action:
 
-Matching Pennies has no pure Nash — whatever pure profile you pick, one player wants to switch:
+$$`\begin{array}{c|ccc} \textbf{Opp} & & \textbf{Player} & \\ \hline C & C & \prec & D \\ D & C & \prec & D \end{array}`
 
-But the fully mixed profile (both players play both actions) is Nash — incomparability breaks
-the cycle.
+Since D is better against every opponent action, the face \{D\} dominates every other face.
+The dominance order on faces (for either player, against a fully mixed opponent) is total:
+
+$$`\begin{array}{c|ccccc} \textbf{Opp} & & & \textbf{Player} & & \\ \hline \{C\} & \{C\} & \prec & \{C,D\} & \prec & \{D\} \\ \{D\} & \{C\} & \prec & \{C,D\} & \prec & \{D\} \\ \{C,D\} & \{C\} & \prec & \{C,D\} & \prec & \{D\} \end{array}`
+
+The unique Nash equilibrium is mutual defection — no player can deviate from \{D\}.
+
+## Matching Pennies
+
+Player 1 (matcher) wants to match; player 2 (mismatcher) wants to differ.
+For the matcher:
+
+$$`\begin{array}{c|ccc} \textbf{Opp} & & \textbf{Matcher} & \\ \hline H & H & \succ & T \\ T & H & \prec & T \end{array}`
+
+The preferred action depends on the opponent — H is better against H, T is better against T.
+When the opponent plays the full face \{H, T\}, neither action dominates the other.
+The dominance order on faces (against the fully mixed opponent) is flat — everything is
+incomparable:
+
+$$`\begin{array}{c|ccccc} \textbf{Opp} & & & \textbf{Matcher} & & \\ \hline \{H,T\} & \{H\} & \parallel & \{T\} & \parallel & \{H,T\} \end{array}`
+
+There is no pure Nash equilibrium. But the fully mixed profile (\{H,T\} for both players) _is_
+Nash — no face strictly dominates \{H,T\}, because incomparability blocks every deviation.
+This is the key mechanism: the deviation cycle HH $`\to` HT $`\to` TT $`\to` TH $`\to` HH dissolves into
+incomparability when we move from pure to mixed strategies.
 
 
 # Nash Existence
@@ -145,6 +166,10 @@ a mix of every action) and iteratively eliminates dominated actions.
 
 The algorithm maintains the *OutsideDom (OD)* invariant: for each player, every action outside
 the current face is dominated by every action inside:
+
+%%%
+tag := "outside-dom"
+%%%
 
 ```anchor OutsideDom
 def OutsideDom (i : I) (σ : Profile I V) : Prop :=

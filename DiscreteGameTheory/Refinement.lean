@@ -49,6 +49,7 @@ open Base.SignGame (Dominates OutsideDom)
 
 /-- A betweenness relation on a type. `between c a b` means c lies
     on the segment from a to b. -/
+-- ANCHOR: Betweenness
 class Betweenness (V : Type*) where
   between : V → V → V → Prop
   between_refl_left : ∀ a b, between a a b
@@ -56,6 +57,7 @@ class Betweenness (V : Type*) where
   between_symm : ∀ a b c, between c a b → between c b a
   between_self : ∀ a c, between c a a → c = a
   between_dec : ∀ c a b, Decidable (between c a b)
+-- ANCHOR_END: Betweenness
 
 attribute [instance] Betweenness.between_dec
 
@@ -63,17 +65,23 @@ section ConvexClosure
 
 variable {V : Type*} [DecidableEq V] [Fintype V] [Betweenness V]
 
+-- ANCHOR: IsConvex
 def IsConvex (S : Finset V) : Prop :=
   ∀ a ∈ S, ∀ b ∈ S, ∀ c, Betweenness.between c a b → c ∈ S
+-- ANCHOR_END: IsConvex
 
 instance IsConvex.decidable (S : Finset V) : Decidable (IsConvex S) :=
   inferInstanceAs (Decidable (∀ a ∈ S, ∀ b ∈ S, ∀ c, Betweenness.between c a b → c ∈ S))
 
 /-- Smallest convex superset, defined as the intersection of all convex supersets. -/
+-- ANCHOR: convClosure
 def convClosure (F : Face V) : Face V :=
-  ⟨Finset.univ.filter (fun v => ∀ S : Finset V, F.val ⊆ S → IsConvex S → v ∈ S),
+  ⟨Finset.univ.filter (fun v =>
+      ∀ S : Finset V, F.val ⊆ S → IsConvex S → v ∈ S),
    let ⟨x, hx⟩ := F.property
-   ⟨x, Finset.mem_filter.mpr ⟨Finset.mem_univ x, fun _S hFS _ => hFS hx⟩⟩⟩
+   ⟨x, Finset.mem_filter.mpr
+      ⟨Finset.mem_univ x, fun _S hFS _ => hFS hx⟩⟩⟩
+-- ANCHOR_END: convClosure
 
 lemma mem_convClosure (F : Face V) (v : V) :
     v ∈ (convClosure F).val ↔ ∀ S : Finset V, F.val ⊆ S → IsConvex S → v ∈ S := by
@@ -434,12 +442,16 @@ lemma Dominates_embed (k : ℕ) {i : I}
        write v' between embed(w₀) and some embed(b₀), then `playerConvex_right`.
     3. For arbitrary inside w' vs v': extend from step 2 via `playerConvex_left` on
        the convex closure. -/
+-- ANCHOR: outsideDom_embed_convClosure
 theorem outsideDom_embed_convClosure (k : ℕ)
     {σ : Base.Profile I (T.V k)}
-    (h_od : ∀ i, (T.game k).OutsideDom i σ) (i : I) :
+    (h_od : ∀ i, (T.game k).OutsideDom i σ)
+    (i : I) :
     (T.game (k+1)).OutsideDom i
       (T.convexClosureProfile (k+1)
-        (embedProfile (T.embed k) (T.embed_inj k) σ)) := by
+        (embedProfile
+          (T.embed k) (T.embed_inj k) σ)) := by
+-- ANCHOR_END: outsideDom_embed_convClosure
   set σ' := embedProfile (T.embed k) (T.embed_inj k) σ
   set σ'' := T.convexClosureProfile (k+1) σ'
   intro v' hv' w' hw' a ha p hp b hb
@@ -476,27 +488,39 @@ theorem outsideDom_embed_convClosure (k : ℕ)
 -- Nash refinement
 -- ================================================================
 
+-- ANCHOR: FaceRefines
 /-- F' refines F: F' ⊆ convClosure(embed(F)). -/
 def FaceRefines (k : ℕ) (i : I)
-    (F' : Face (T.V (k+1) i)) (F : Face (T.V k i)) : Prop :=
-  Face.IsSubface F' (T.faceClosure (k+1) i (embedFace (T.embed k i) (T.embed_inj k i) F))
+    (F' : Face (T.V (k+1) i))
+    (F : Face (T.V k i)) : Prop :=
+  Face.IsSubface F'
+    (T.faceClosure (k+1) i
+      (embedFace (T.embed k i) (T.embed_inj k i) F))
+-- ANCHOR_END: FaceRefines
 
+-- ANCHOR: ProfileRefines
 def ProfileRefines (k : ℕ)
     (σ' : Base.Profile I (T.V (k+1)))
     (σ : Base.Profile I (T.V k)) : Prop :=
   ∀ i, T.FaceRefines k i (σ' i) (σ i)
+-- ANCHOR_END: ProfileRefines
 
-def HasConvexFaces (k : ℕ) (σ : Base.Profile I (T.V k)) : Prop :=
+-- ANCHOR: HasConvexFaces
+def HasConvexFaces (k : ℕ)
+    (σ : Base.Profile I (T.V k)) : Prop :=
   ∀ i, @IsConvex (T.V k i) (T.betw k i) (σ i).val
+-- ANCHOR_END: HasConvexFaces
 
 /-- At every level k, there exists a Nash equilibrium that is OD and convex-closed.
     Inductive step: embed level-k Nash into level k+1, convex-close, transfer OD
     via `outsideDom_embed_convClosure`, run descent, convex-close the result. -/
+-- ANCHOR: nash_refining_sequence
 theorem nash_refining_sequence (k : ℕ) :
     ∃ σ : Base.Profile I (T.V k),
       (T.game k).IsNash σ ∧
       (∀ i, (T.game k).OutsideDom i σ) ∧
       T.HasConvexFaces k σ := by
+-- ANCHOR_END: nash_refining_sequence
   induction k with
   | zero =>
     have h_od_full : ∀ i, (T.game 0).OutsideDom i (fun _ => Face.full) :=
@@ -519,12 +543,14 @@ theorem nash_refining_sequence (k : ℕ) :
 
 /-- Fine Nash refines coarse Nash: there exist Nash equilibria at levels k and k+1
     with the fine one contained in the convex closure of the embedded coarse one. -/
+-- ANCHOR: nash_at_next_level_refines
 theorem nash_at_next_level_refines (k : ℕ) :
     ∃ σ : Base.Profile I (T.V k),
     ∃ σ' : Base.Profile I (T.V (k+1)),
       (T.game k).IsNash σ ∧
       (T.game (k+1)).IsNash σ' ∧
       T.ProfileRefines k σ' σ := by
+-- ANCHOR_END: nash_at_next_level_refines
   obtain ⟨σ_k, hN_k, hOD_k, _⟩ := T.nash_refining_sequence k
   set σ_cl := T.convexClosureProfile (k+1) (embedProfile (T.embed k) (T.embed_inj k) σ_k)
   have hOD_cl : ∀ i, (T.game (k+1)).OutsideDom i σ_cl :=

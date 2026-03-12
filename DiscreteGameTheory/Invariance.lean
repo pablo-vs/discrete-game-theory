@@ -36,11 +36,16 @@ variable {I : Type*} [DecidableEq I] {V : I → Type*} [∀ i, DecidableEq (V i)
 
 omit [DecidableEq I] [∀ i, DecidableEq (V i)] in
 /-- Two sign games are equal if and only if their sign functions agree. -/
+-- ANCHOR: SignGame.ext'
 @[ext]
 lemma SignGame.ext' {G H : SignGame I V}
-    (h : ∀ i p a b, G.sign i p a b = H.sign i p a b) : G = H := by
+    (h : ∀ i p a b,
+      G.sign i p a b = H.sign i p a b) :
+    G = H := by
+-- ANCHOR_END: SignGame.ext'
   have hsign : G.sign = H.sign :=
-    funext fun i => funext fun p => funext fun a => funext fun b => h i p a b
+    funext fun i => funext fun p =>
+      funext fun a => funext fun b => h i p a b
   cases G; cases H; subst hsign; rfl
 
 -- ================================================================
@@ -48,17 +53,14 @@ lemma SignGame.ext' {G H : SignGame I V}
 -- ================================================================
 
 omit [∀ i, DecidableEq (V i)] in
-/-- Applying per-player strictly monotone transformations to payoffs
-    does not change the sign game. This is the ordinal invariance theorem:
-    Nash equilibria at level 0 depend only on the ordinal ranking
-    of payoffs, not their cardinal values.
-
-    Each player i can have a different transformation f i, as long as
-    each one is strictly monotone. -/
+-- ANCHOR: ofPayoffs_strictMono_invariant
 theorem ofPayoffs_strictMono_invariant [Fintype I]
     (u : (i : I) → (∀ j, V j) → Int)
-    (f : (i : I) → Int → Int) (hf : ∀ i, StrictMono (f i)) :
-    SignGame.ofPayoffs (fun i q => f i (u i q)) = SignGame.ofPayoffs u := by
+    (f : (i : I) → Int → Int)
+    (hf : ∀ i, StrictMono (f i)) :
+    SignGame.ofPayoffs (fun i q => f i (u i q)) =
+    SignGame.ofPayoffs u := by
+-- ANCHOR_END: ofPayoffs_strictMono_invariant
   apply SignGame.ext'
   intro i p a b
   simp only [SignGame.ofPayoffs]
