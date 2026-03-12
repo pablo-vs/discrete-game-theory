@@ -4,25 +4,20 @@ namespace Base
 
 open SignGame
 
--- ================================================================
--- 2×2 game examples (I = Fin 2, V = fun _ => Bool)
--- ================================================================
-
-/-- Helper: compute sign from two Ints -/
 def intSign (a b : Int) : Sign :=
   if a > b then .pos
   else if a = b then .zero
   else .neg
 
-theorem intSign_refl (a : Int) : intSign a a = .zero := by
+lemma intSign_refl (a : Int) : intSign a a = .zero := by
   simp [intSign]
 
-theorem intSign_antisym (a b : Int) : intSign a b = (intSign b a).flip := by
+lemma intSign_antisym (a b : Int) : intSign a b = (intSign b a).flip := by
   simp only [intSign, Sign.flip]; split_ifs <;> first | rfl | omega
 
-theorem intSign_trans (a b c : Int) :
+lemma intSign_trans (a b c : Int) :
     (intSign a b).nonneg → (intSign b c).nonneg → (intSign a c).nonneg := by
-  simp only [intSign, Sign.nonneg]; split_ifs <;> simp_all <;> omega
+  simp only [intSign, Sign.nonneg]; split_ifs <;> simp_all; omega
 
 /-- Construct a 2-player Bool game from payoff matrices.
     Uses explicit sign computation to enable `decide`. -/
@@ -50,53 +45,50 @@ def game2x2 (u_TT u_TF u_FT u_FF : Int) (v_TT v_TF v_FT v_FF : Int) :
     simp only [this]
 
 -- Prisoner's Dilemma: C = true, D = false
-def genPD := game2x2 3 0 5 1 3 5 0 1
+def pd := game2x2 3 0 5 1 3 5 0 1
 
-theorem genPD_nash_DD : genPD.IsPureNash (fun _ => false) := by
+theorem pd_nash_DD : pd.IsPureNash (fun _ => false) := by
   intro i v; fin_cases i <;> cases v <;> decide
 
-theorem genPD_not_nash_CC : ¬genPD.IsPureNash (fun _ => true) := by
+theorem pd_not_nash_CC : ¬pd.IsPureNash (fun _ => true) := by
   intro h; have := h 0 false; revert this; decide
 
 -- Matching Pennies: H = true, T = false
-def genMP := game2x2 1 0 0 1 0 1 1 0
+def mp := game2x2 1 0 0 1 0 1 1 0
 
-theorem genMP_no_pureNash : ∀ p : PureProfile (Fin 2) (fun _ : Fin 2 => Bool),
-    ¬genMP.IsPureNash p := by
+theorem mp_no_pureNash : ∀ p : PureProfile (Fin 2) (fun _ : Fin 2 => Bool),
+    ¬mp.IsPureNash p := by
   intro p hp
   have h0t := hp 0 true; have h0f := hp 0 false
   have h1t := hp 1 true; have h1f := hp 1 false
-  simp only [genMP, game2x2, IsPureNash, intSign, Sign.nonneg] at *
+  simp only [mp, game2x2, IsPureNash, intSign, Sign.nonneg] at *
   cases h0 : p 0 <;> cases h1 : p 1 <;> simp_all
 
 -- Stag Hunt: S = true, H = false
-def genSH := game2x2 4 0 3 3 4 3 0 3
+def sh := game2x2 4 0 3 3 4 3 0 3
 
-theorem genSH_nash_SS : genSH.IsPureNash (fun _ => true) := by
+theorem sh_nash_SS : sh.IsPureNash (fun _ => true) := by
   intro i v; fin_cases i <;> cases v <;> decide
 
-theorem genSH_nash_HH : genSH.IsPureNash (fun _ => false) := by
+theorem sh_nash_HH : sh.IsPureNash (fun _ => false) := by
   intro i v; fin_cases i <;> cases v <;> decide
 
 -- Battle of the Sexes: O = true, F = false
-def genBoS := game2x2 3 0 0 2 2 0 0 3
+def bos := game2x2 3 0 0 2 2 0 0 3
 
-theorem genBoS_nash_OO : genBoS.IsPureNash (fun _ => true) := by
+theorem bos_nash_OO : bos.IsPureNash (fun _ => true) := by
   intro i v; fin_cases i <;> cases v <;> decide
 
-theorem genBoS_nash_FF : genBoS.IsPureNash (fun _ => false) := by
+theorem bos_nash_FF : bos.IsPureNash (fun _ => false) := by
   intro i v; fin_cases i <;> cases v <;> decide
 
 -- ================================================================
--- 3-player coordination game example
+-- 3-player coordination game
 -- ================================================================
 
-/-- A 3-player coordination game where each player has two actions (Bool).
-    Each player gets payoff 1 if all agree, 0 otherwise.
-    Sign is computed directly for decidability. -/
+/-- A 3-player coordination game: each player gets payoff 1 if all agree, 0 otherwise. -/
 def coordGame3 : SignGame (Fin 3) (fun _ : Fin 3 => Bool) where
   sign i p a b :=
-    -- Whether all agree when player i plays x (x = a or b)
     let agree (x : Bool) : Bool :=
       (if (0 : Fin 3) = i then x else p 0) == (if (1 : Fin 3) = i then x else p 1) &&
       (if (1 : Fin 3) = i then x else p 1) == (if (2 : Fin 3) = i then x else p 2)
@@ -124,13 +116,15 @@ theorem coordGame3_not_nash_mixed :
   intro h; have := h 0 false; revert this; decide
 
 -- ================================================================
--- Pedagogical examples
+-- Pedagogical examples: uniqueness, mixed Nash, and dominance partiality
 -- ================================================================
 
-/-- The Prisoner's Dilemma has a unique Nash equilibrium at (D,D). -/
-theorem genPD_unique_pureNash :
+/-- The Prisoner's Dilemma has a unique pure Nash equilibrium at (D,D).
+    This illustrates the central tension of PD: mutual cooperation is
+    Pareto-better but not an equilibrium. -/
+theorem pd_unique_pureNash :
     ∀ p : PureProfile (Fin 2) (fun _ : Fin 2 => Bool),
-    genPD.IsPureNash p ↔ p = (fun _ => false) := by
+    pd.IsPureNash p ↔ p = (fun _ => false) := by
   intro p
   constructor
   · intro hp
@@ -141,43 +135,43 @@ theorem genPD_unique_pureNash :
     obtain ⟨i, hi⟩ := this
     have hpi := hp i false; have hpi' := hp i true
     fin_cases i <;> (cases h0 : p 0 <;> cases h1 : p 1 <;>
-      simp_all [genPD, game2x2, intSign, Sign.nonneg])
-  · rintro rfl; exact genPD_nash_DD
+      simp_all [pd, game2x2, intSign, Sign.nonneg])
+  · rintro rfl; exact pd_nash_DD
 
-/-- Matching Pennies: the only Nash equilibrium is the fully mixed profile
-    where both players play {H, T}. -/
-theorem genMP_mixed_nash : genMP.IsNash (fun _ : Fin 2 => Face.full (V := Bool)) := by
-  intro i A
-  intro ⟨hfwd, _⟩
+/-- Matching Pennies has no pure Nash equilibrium (`mp_no_pureNash`), but the
+    fully mixed profile where both players play {H, T} is a Nash equilibrium
+    in the sign-game sense: no face strictly dominates the full face. -/
+theorem mp_mixed_nash : mp.IsNash (fun _ : Fin 2 => Face.full (V := Bool)) := by
+  intro i A ⟨hfwd, _⟩
   obtain ⟨a, ha⟩ := A.2
   have hcon : ∀ (p : ∀ _ : Fin 2, Bool),
       ConsistentAt (fun _ : Fin 2 => Face.full (V := Bool)) i p :=
     fun _ _ _ => Finset.mem_univ _
   have h1 := hfwd a ha (fun _ => true) (hcon _) (!a) (Finset.mem_univ _)
   have h2 := hfwd a ha (fun _ => false) (hcon _) (!a) (Finset.mem_univ _)
-  fin_cases i <;> cases a <;> simp_all [genMP, game2x2, intSign, Sign.nonneg]
+  fin_cases i <;> cases a <;> simp_all [mp, game2x2, intSign, Sign.nonneg]
 
-/-- The Dominates ordering is partial on mixed profiles: in Matching Pennies,
-    neither {H} nor {T} dominates the other when the opponent mixes. -/
-theorem genMP_partial_order :
+/-- The Dominates ordering is genuinely partial on mixed profiles: in Matching
+    Pennies, when the opponent plays the full face {H,T}, neither {H} nor {T}
+    dominates the other for player 0. This shows that sign-game dominance is
+    not a total order on faces. -/
+theorem mp_partial_order :
     let σ : Profile (Fin 2) (fun _ : Fin 2 => Bool) := fun _ => Face.full
-    ¬genMP.Dominates 0 σ (Face.vertex true) (Face.vertex false) ∧
-    ¬genMP.Dominates 0 σ (Face.vertex false) (Face.vertex true) := by
+    ¬mp.Dominates 0 σ (Face.vertex true) (Face.vertex false) ∧
+    ¬mp.Dominates 0 σ (Face.vertex false) (Face.vertex true) := by
   refine ⟨fun h => ?_, fun h => ?_⟩
   · have := h true (Finset.mem_singleton_self _) (fun _ => false)
       (fun _ _ => Finset.mem_univ _ : ConsistentAt _ (0 : Fin 2) _)
       false (Finset.mem_singleton_self _)
-    simp_all [genMP, game2x2, intSign, Sign.nonneg]
+    simp_all [mp, game2x2, intSign, Sign.nonneg]
   · have := h false (Finset.mem_singleton_self _) (fun _ => true)
       (fun _ _ => Finset.mem_univ _ : ConsistentAt _ (0 : Fin 2) _)
       true (Finset.mem_singleton_self _)
-    simp_all [genMP, game2x2, intSign, Sign.nonneg]
+    simp_all [mp, game2x2, intSign, Sign.nonneg]
 
--- ================================================================
--- Readable game constructors (for the article)
--- ================================================================
-
-/-- Build a symmetric 2-player game from a ranking function. -/
+/-- Build a symmetric 2-player game from a ranking function.
+    `rank me opp` gives the ordinal payoff when I play `me` and my opponent plays `opp`.
+    Symmetry means both players share the same ranking function. -/
 def symGame2x2 (rank : Bool → Bool → ℕ) :
     SignGame (Fin 2) (fun _ : Fin 2 => Bool) where
   sign i p a b :=
@@ -205,11 +199,7 @@ def game2x2_rank (rank₀ rank₁ : Bool → Bool → ℕ) :
     have : p (1 - i) = q (1 - i) := h (1 - i) (by intro heq; exact absurd heq (by omega))
     simp only [this]
 
--- ================================================================
--- Prisoner's Dilemma (readable version)
--- ================================================================
-
-/-- Prisoner's Dilemma ranking. C = true, D = false. -/
+-- Prisoner's Dilemma via ranking: C = true, D = false
 def pd_rank (me opp : Bool) : ℕ :=
   match me, opp with
   | true,  false => 0   -- I cooperate, they defect (worst)
@@ -217,14 +207,16 @@ def pd_rank (me opp : Bool) : ℕ :=
   | true,  true  => 2   -- both cooperate
   | false, true  => 3   -- I defect, they cooperate (best)
 
-def genPD' := symGame2x2 pd_rank
+def pd' := symGame2x2 pd_rank
 
-theorem genPD'_nash_DD : genPD'.IsPureNash (fun _ => false) := by
+lemma pd'_nash_DD : pd'.IsPureNash (fun _ => false) := by
   intro i v; fin_cases i <;> cases v <;> decide
 
-theorem genPD'_not_nash_CC : ¬genPD'.IsPureNash (fun _ => true) := by
+lemma pd'_not_nash_CC : ¬pd'.IsPureNash (fun _ => true) := by
   intro h; have := h 0 false; revert this; decide
 
+/-- Two ranking functions that differ by an affine transform produce the same
+    sign function, illustrating ordinal invariance. -/
 def pd_rank_alt (me opp : Bool) : ℕ :=
   match me, opp with
   | true,  false => 10
@@ -238,11 +230,8 @@ theorem pd_same_game :
   simp only [symGame2x2, pd_rank, pd_rank_alt, cmpSign]
   cases a <;> cases b <;> cases (p (1 - i)) <;> simp
 
--- ================================================================
--- Matching Pennies (readable version)
--- ================================================================
-
-def genMP' := game2x2_rank
+-- Matching Pennies via ranking: P0 wants to match, P1 wants to differ
+def mp' := game2x2_rank
   (fun me opp => match me, opp with  -- P0 wants to match
     | true,  true  => 1
     | false, false => 1
@@ -252,12 +241,12 @@ def genMP' := game2x2_rank
     | false, true  => 1
     | _,     _     => 0)
 
-theorem genMP'_no_pureNash :
-    ∀ p, ¬genMP'.IsPureNash p := by
+theorem mp'_no_pureNash :
+    ∀ p, ¬mp'.IsPureNash p := by
   intro p hp
   have h0t := hp 0 true; have h0f := hp 0 false
   have h1t := hp 1 true; have h1f := hp 1 false
-  simp only [genMP', game2x2_rank, IsPureNash, cmpSign, Sign.nonneg] at *
+  simp only [mp', game2x2_rank, IsPureNash, cmpSign, Sign.nonneg] at *
   cases h0 : p 0 <;> cases h1 : p 1 <;> simp_all
 
 end Base

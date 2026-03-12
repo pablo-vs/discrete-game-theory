@@ -23,7 +23,7 @@ open Refinement
 -- Section 1: Iterated Embedding
 -- ================================================================
 
-namespace Refinement.GeneralSignTower
+namespace Refinement.SignTower
 
 variable {I : Type*} [DecidableEq I] [Fintype I]
 
@@ -31,22 +31,22 @@ variable {I : Type*} [DecidableEq I] [Fintype I]
     The output type T.V (k+n) works because Lean's Nat.add is defined
     recursively on the second argument, so k+(n+1) = (k+n)+1 holds
     definitionally. -/
-def embedIter (T : GeneralSignTower I) (k n : ℕ) (i : I) : T.V k i → T.V (k + n) i :=
+def embedIter (T : SignTower I) (k n : ℕ) (i : I) : T.V k i → T.V (k + n) i :=
   match n with
   | 0 => id
   | n + 1 => T.embed (k + n) i ∘ T.embedIter k n i
 
-@[simp] theorem embedIter_zero (T : GeneralSignTower I) (k : ℕ) (i : I) :
+@[simp] theorem embedIter_zero (T : SignTower I) (k : ℕ) (i : I) :
     T.embedIter k 0 i = id := rfl
 
-theorem embedIter_succ (T : GeneralSignTower I) (k n : ℕ) (i : I) :
+lemma embedIter_succ (T : SignTower I) (k n : ℕ) (i : I) :
     T.embedIter k (n + 1) i = T.embed (k + n) i ∘ T.embedIter k n i := rfl
 
-theorem embedIter_one (T : GeneralSignTower I) (k : ℕ) (i : I) :
+lemma embedIter_one (T : SignTower I) (k : ℕ) (i : I) :
     T.embedIter k 1 i = T.embed k i := by
   ext v; simp [embedIter]
 
-theorem embedIter_inj (T : GeneralSignTower I) (k n : ℕ) (i : I) :
+lemma embedIter_inj (T : SignTower I) (k n : ℕ) (i : I) :
     Function.Injective (T.embedIter k n i) := by
   induction n with
   | zero => exact Function.injective_id
@@ -54,7 +54,7 @@ theorem embedIter_inj (T : GeneralSignTower I) (k n : ℕ) (i : I) :
     rw [embedIter_succ]
     exact Function.Injective.comp (T.embed_inj (k + n) i) ih
 
-theorem embedIter_between (T : GeneralSignTower I) (k n : ℕ) (i : I)
+lemma embedIter_between (T : SignTower I) (k n : ℕ) (i : I)
     (a b c : T.V k i)
     (h : (T.betw k i).between c a b) :
     (T.betw (k + n) i).between (T.embedIter k n i c)
@@ -67,7 +67,7 @@ theorem embedIter_between (T : GeneralSignTower I) (k n : ℕ) (i : I)
 
 /-- Key coherence theorem: the sign at level k+n, evaluated on
     embedIter'd level-k arguments, equals the sign at level k. -/
-theorem coherent_embedIter (T : GeneralSignTower I) (k n : ℕ) (i : I)
+theorem coherent_embedIter (T : SignTower I) (k n : ℕ) (i : I)
     (p : Base.PureProfile I (T.V k)) (a b : T.V k i) :
     (T.game (k + n)).sign i
       (fun j => T.embedIter k n j (p j))
@@ -85,18 +85,18 @@ theorem coherent_embedIter (T : GeneralSignTower I) (k n : ℕ) (i : I)
     rw [h1, T.coherent, ih]
 
 /-- Embed a pure profile from level k to level k+n. -/
-def embedIterPureProfile (T : GeneralSignTower I) (k n : ℕ)
+def embedIterPureProfile (T : SignTower I) (k n : ℕ)
     (p : Base.PureProfile I (T.V k)) :
     Base.PureProfile I (T.V (k + n)) :=
   fun j => T.embedIter k n j (p j)
 
 /-- Embed a face from level k to level k+n. -/
-def embedIterFace (T : GeneralSignTower I) (k n : ℕ) (i : I)
+def embedIterFace (T : SignTower I) (k n : ℕ) (i : I)
     (F : Face (T.V k i)) :
     Face (T.V (k + n) i) :=
   embedFace (T.embedIter k n i) (T.embedIter_inj k n i) F
 
-end Refinement.GeneralSignTower
+end Refinement.SignTower
 
 -- ================================================================
 -- Section 2: Game Restriction via Embeddings
@@ -118,7 +118,7 @@ def restrictGame {W : I → Type*} [∀ i, DecidableEq (W i)]
     show f j (p j) = f j (q j); rw [h j hj])
 
 omit [Fintype I] [DecidableEq I] [∀ i, DecidableEq (V i)] in
-theorem restrictGame_sign {W : I → Type*} [∀ i, DecidableEq (W i)]
+lemma restrictGame_sign {W : I → Type*} [∀ i, DecidableEq (W i)]
     {G : Base.SignGame I V} {f : ∀ i, W i → V i}
     {i : I} {p : Base.PureProfile I W} {a b : W i} :
     (restrictGame G f).sign i p a b =
@@ -126,8 +126,8 @@ theorem restrictGame_sign {W : I → Type*} [∀ i, DecidableEq (W i)]
 
 /-- Restricting a tower's game at level k+n via embedIter from level k
     gives the same signs as the game at level k. -/
-theorem restrictGame_embedIter_eq
-    (T : Refinement.GeneralSignTower I) (k n : ℕ)
+lemma restrictGame_embedIter_eq
+    (T : Refinement.SignTower I) (k n : ℕ)
     (i : I) (p : Base.PureProfile I (T.V k)) (a b : T.V k i) :
     (restrictGame (T.game (k + n)) (fun j => T.embedIter k n j)).sign i p a b =
     (T.game k).sign i p a b := by
@@ -139,7 +139,7 @@ end SelfSimilarity
 -- Section 3: Multi-Level Game (Per-Player Independence)
 -- ================================================================
 
-namespace Refinement.GeneralSignTower
+namespace Refinement.SignTower
 
 variable {I : Type*} [DecidableEq I] [Fintype I]
 
@@ -153,7 +153,7 @@ variable {I : Type*} [DecidableEq I] [Fintype I]
     actions and their opponents' actions. When we fix the player's level
     to κ i, the opponents' types don't matter — any consistent
     pure profile will give the same sign. -/
-def multiLevelGame (T : GeneralSignTower I) (κ : I → ℕ) :
+def multiLevelGame (T : SignTower I) (κ : I → ℕ) :
     Base.SignGame I (fun i => T.V (κ i) i) where
   sign i p a b := (T.game (κ i)).sign i
     (fun j => if h : κ j = κ i then h ▸ p j
@@ -168,14 +168,14 @@ def multiLevelGame (T : GeneralSignTower I) (κ : I → ℕ) :
 
 /-- When all players are at the same level k, the multi-level game
     agrees with T.game k. -/
-theorem multiLevelGame_uniform_sign (T : GeneralSignTower I) (k : ℕ)
+lemma multiLevelGame_uniform_sign (T : SignTower I) (k : ℕ)
     (i : I) (p : Base.PureProfile I (T.V k)) (a b : T.V k i) :
     (T.multiLevelGame (fun _ => k)).sign i p a b =
     (T.game k).sign i p a b := by
   simp [multiLevelGame]
 
 /-- Nash equilibria exist in multi-level games. -/
-theorem multiLevelGame_nash_exists (T : GeneralSignTower I) (κ : I → ℕ) :
+theorem multiLevelGame_nash_exists (T : SignTower I) (κ : I → ℕ) :
     ∃ σ, (T.multiLevelGame κ).IsNash σ :=
   (T.multiLevelGame κ).nash_exists
 
@@ -184,7 +184,7 @@ theorem multiLevelGame_nash_exists (T : GeneralSignTower I) (κ : I → ℕ) :
     This is because sign_irrel makes the sign depend only on opponents'
     actions, and the multiLevelGame construction uses dummy values for
     type-mismatched opponents. -/
-theorem multiLevelGame_sign_irrel (T : GeneralSignTower I)
+lemma multiLevelGame_sign_irrel (T : SignTower I)
     (κ : I → ℕ) (i : I)
     (p₁ p₂ : Base.PureProfile I (fun j => T.V (κ j) j))
     (hp : ∀ j, j ≠ i → p₁ j = p₂ j)
@@ -196,7 +196,7 @@ theorem multiLevelGame_sign_irrel (T : GeneralSignTower I)
 /-- The multi-level sign is coherent with embedIter: embedding player i's
     actions from level k to level k+n doesn't change the game's sign,
     when the multi-level game is set up with the right levels. -/
-theorem multiLevelGame_coherent_embed (T : GeneralSignTower I) (k n : ℕ)
+lemma multiLevelGame_coherent_embed (T : SignTower I) (k n : ℕ)
     (i : I) (p : Base.PureProfile I (T.V k)) (a b : T.V k i) :
     (T.multiLevelGame (fun _ => k + n)).sign i
       (fun j => T.embedIter k n j (p j))
@@ -206,7 +206,7 @@ theorem multiLevelGame_coherent_embed (T : GeneralSignTower I) (k n : ℕ)
   simp [multiLevelGame]
   exact T.coherent_embedIter k n i p a b
 
-end Refinement.GeneralSignTower
+end Refinement.SignTower
 
 -- ================================================================
 -- Section 4: Abstract Morphisms
@@ -222,8 +222,8 @@ def topEmbedAt (κ : I → ℕ) (i₀ : I) : I → ℕ :=
 
 /-- Bottom embedding: restricting a game to a subrange via coherent injection
     preserves signs. -/
-theorem restrictGame_coherent_subtype
-    {T : Refinement.GeneralSignTower I} (k : ℕ) (i₀ : I)
+lemma restrictGame_coherent_subtype
+    {T : Refinement.SignTower I} (k : ℕ) (i₀ : I)
     (f : T.V k i₀ → T.V (k + 1) i₀)
     (hf_coh : ∀ (p : Base.PureProfile I (T.V k)) (a b : T.V k i₀),
       (T.game (k + 1)).sign i₀
@@ -239,126 +239,3 @@ theorem restrictGame_coherent_subtype
 
 end SelfSimilarity
 
--- ================================================================
--- Section 5: Grid Child Embeddings (Concrete)
--- ================================================================
-
-namespace SelfSimilarity
-
-/-- Left child embedding: maps level-k grid points to the left half
-    of the level-(k+1) grid. j ↦ j (identity on values). -/
-def leftChild (k : ℕ) (j : Fin (Refinement.gridSize k)) : Fin (Refinement.gridSize (k + 1)) :=
-  ⟨j.val, by grid_omega⟩
-
-/-- Right child embedding: maps level-k grid points to the right half
-    of the level-(k+1) grid. j ↦ j + 2^k. -/
-def rightChild (k : ℕ) (j : Fin (Refinement.gridSize k)) : Fin (Refinement.gridSize (k + 1)) :=
-  ⟨j.val + 2 ^ k, by grid_omega⟩
-
-@[simp] theorem leftChild_val (k : ℕ) (j : Fin (Refinement.gridSize k)) :
-    (leftChild k j).val = j.val := rfl
-
-@[simp] theorem rightChild_val (k : ℕ) (j : Fin (Refinement.gridSize k)) :
-    (rightChild k j).val = j.val + 2 ^ k := rfl
-
-theorem leftChild_injective (k : ℕ) : Function.Injective (leftChild k) := by
-  intro a b h
-  simp only [leftChild, Fin.mk.injEq] at h
-  exact Fin.ext h
-
-theorem rightChild_injective (k : ℕ) : Function.Injective (rightChild k) := by
-  intro a b h
-  simp only [rightChild, Fin.mk.injEq] at h
-  exact Fin.ext (by omega)
-
-theorem leftChild_strictMono (k : ℕ) : StrictMono (leftChild k) :=
-  fun _ _ h => h
-
-theorem rightChild_strictMono (k : ℕ) : StrictMono (rightChild k) := by
-  intro a b h
-  show rightChild k a < rightChild k b
-  simp only [Fin.lt_def, rightChild_val]
-  omega
-
-/-- Left child preserves betweenness (it's value-preserving). -/
-theorem leftChild_between (k : ℕ) (a b c : Fin (Refinement.gridSize k))
-    (h : (Refinement.finBetweenness (Refinement.gridSize k)).between c a b) :
-    (Refinement.finBetweenness (Refinement.gridSize (k + 1))).between
-      (leftChild k c) (leftChild k a) (leftChild k b) := by
-  -- leftChild preserves .val, so min/max are preserved as Fin values
-  simp only [Refinement.finBetweenness] at *
-  exact h
-
-/-- Right child preserves betweenness. -/
-theorem rightChild_between (k : ℕ) (a b c : Fin (Refinement.gridSize k))
-    (h : (Refinement.finBetweenness (Refinement.gridSize k)).between c a b) :
-    (Refinement.finBetweenness (Refinement.gridSize (k + 1))).between
-      (rightChild k c) (rightChild k a) (rightChild k b) := by
-  simp only [Refinement.finBetweenness] at *
-  obtain ⟨hlo, hhi⟩ := h
-  have hlo_v : min a.val b.val ≤ c.val := by
-    rw [← Fin.coe_min]; exact Fin.val_le_of_le hlo
-  have hhi_v : c.val ≤ max a.val b.val := by
-    rw [← Fin.coe_max]; exact Fin.val_le_of_le hhi
-  constructor <;> {
-    show _ ≤ _
-    simp only [Fin.le_def, Fin.coe_min, Fin.coe_max, rightChild_val]
-    omega
-  }
-
-/-- The boundary is shared: the right endpoint of the left child
-    equals the left endpoint of the right child. -/
-theorem boundary_shared (k : ℕ) :
-    leftChild k ⟨2 ^ k, by grid_omega⟩ = rightChild k ⟨0, Nat.succ_pos _⟩ := by
-  apply Fin.ext; simp only [leftChild_val, rightChild_val]; omega
-
-/-- Every fine point in the left half lies between leftChild(a) and leftChild(b)
-    for some b. -/
-theorem fine_between_leftChild (k : ℕ) (v : Fin (Refinement.gridSize (k + 1)))
-    (hv : v.val ≤ 2 ^ k)
-    (a : Fin (Refinement.gridSize k)) :
-    ∃ b : Fin (Refinement.gridSize k),
-      (Refinement.finBetweenness (Refinement.gridSize (k + 1))).between
-        v (leftChild k a) (leftChild k b) := by
-  simp only [Refinement.finBetweenness, leftChild]
-  by_cases h : v.val ≤ a.val
-  · refine ⟨⟨0, by grid_omega⟩, ?_⟩
-    constructor <;> { rw [Fin.le_def]; simp only [Fin.coe_min, Fin.coe_max]; omega }
-  · push_neg at h
-    refine ⟨⟨2 ^ k, by grid_omega⟩, ?_⟩
-    constructor <;> { rw [Fin.le_def]; simp only [Fin.coe_min, Fin.coe_max]; omega }
-
-/-- Every fine point in the right half lies between rightChild(a) and rightChild(b)
-    for some b. -/
-theorem fine_between_rightChild (k : ℕ) (v : Fin (Refinement.gridSize (k + 1)))
-    (hv : 2 ^ k ≤ v.val)
-    (a : Fin (Refinement.gridSize k)) :
-    ∃ b : Fin (Refinement.gridSize k),
-      (Refinement.finBetweenness (Refinement.gridSize (k + 1))).between
-        v (rightChild k a) (rightChild k b) := by
-  simp only [Refinement.finBetweenness, rightChild]
-  have ha := a.isLt
-  have hv' := v.isLt
-  by_cases h : v.val ≤ a.val + 2 ^ k
-  · refine ⟨⟨0, by grid_omega⟩, ?_⟩
-    constructor <;> { rw [Fin.le_def]; simp only [Fin.coe_min, Fin.coe_max]; omega }
-  · push_neg at h
-    refine ⟨⟨2 ^ k, by grid_omega⟩, ?_⟩
-    constructor <;> { rw [Fin.le_def]; simp only [Fin.coe_min, Fin.coe_max]; grid_omega }
-
-/-- gridEmbed maps 0 to 0, same as leftChild. -/
-theorem gridEmbed_zero_eq_leftChild_zero (k : ℕ) :
-    Refinement.gridEmbed k ⟨0, Nat.succ_pos _⟩ = leftChild k ⟨0, Nat.succ_pos _⟩ := by
-  apply Fin.ext; simp only [Refinement.gridEmbed_val, leftChild_val]
-
-/-- The left child covers [0, 2^k] of the fine grid. -/
-theorem leftChild_range (k : ℕ) (j : Fin (Refinement.gridSize k)) :
-    (leftChild k j).val ≤ 2 ^ k := by
-  simp only [leftChild_val]; have := j.isLt; grid_omega
-
-/-- The right child covers [2^k, 2^(k+1)] of the fine grid. -/
-theorem rightChild_range (k : ℕ) (j : Fin (Refinement.gridSize k)) :
-    2 ^ k ≤ (rightChild k j).val := by
-  simp only [rightChild_val]; omega
-
-end SelfSimilarity

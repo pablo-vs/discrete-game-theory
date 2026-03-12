@@ -1,10 +1,14 @@
 name = "discrete_game_theory"
 version = "0.1.0"
-defaultTargets = ["DiscreteGameTheory"]
+defaultTargets = ["DiscreteGameTheory", "DiscreteGameTheoryExamples"]
 
 [[lean_lib]]
 name = "DiscreteGameTheory"
 globs = ["DiscreteGameTheory", "DiscreteGameTheory.+"]
+
+[[lean_lib]]
+name = "DiscreteGameTheoryExamples"
+globs = ["DiscreteGameTheoryExamples", "DiscreteGameTheoryExamples.+"]
 
 [[require]]
 name = "mathlib"

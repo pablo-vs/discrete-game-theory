@@ -206,4 +206,4 @@ Mathlib imports:
 ## Authorship
 
 Most of the high-level theory and definitions are my own, but Claude wrote
-almost all of the code and this file, with some contributions from Codex and Gemini. 
+almost all of the code, with some contributions from Codex and Gemini. 
