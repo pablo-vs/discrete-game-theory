@@ -2,3 +2,7 @@
 /.lake
 html/
 _site/
+_out/
+.claude
+.codex
+.gemini

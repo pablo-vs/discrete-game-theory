@@ -10,6 +10,13 @@ globs = ["DiscreteGameTheory", "DiscreteGameTheory.+"]
 name = "DiscreteGameTheoryExamples"
 globs = ["DiscreteGameTheoryExamples", "DiscreteGameTheoryExamples.+"]
 
+[[lean_lib]]
+name = "Docs"
+
+[[lean_exe]]
+name = "generate-docs"
+root = "DocsMain"
+
 [[require]]
 name = "mathlib"
 scope = "leanprover-community"

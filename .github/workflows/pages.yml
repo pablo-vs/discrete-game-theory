@@ -27,12 +27,17 @@ jobs:
             DiscreteGameTheoryExamples
             DiscreteGameTheory:literate
             DiscreteGameTheoryExamples:literate
+            generate-docs
 
-      - name: Render literate HTML
+      - name: Render HTML
         run: |
           mkdir -p _site/lib _site/examples
           lake exe verso-html .lake/build/literate/DiscreteGameTheory _site/lib
           lake exe verso-html .lake/build/literate/DiscreteGameTheoryExamples _site/examples
+          lake exe generate-docs _site/docs || true
+          if [ ! -d _site/docs ]; then
+            cp -r _out/html-multi _site/docs
+          fi
 
       - name: Create landing page
         run: |
@@ -55,9 +60,14 @@ jobs:
           </head>
           <body>
             <h1>Discrete Game Theory</h1>
-            <p class="subtitle">A Lean 4 formalization of finite sign games, Nash equilibria, and refinement towers.</p>
+            <p class="subtitle">A Lean 4 formalization of discrete game theory fundamentals — games and Nash equilibria without probabilities.</p>
 
-            <h2>Library</h2>
+            <h2>Guide</h2>
+            <ul>
+              <li><a href="docs/">Discrete Game Theory</a> &mdash; narrative introduction with interactive code</li>
+            </ul>
+
+            <h2>Library Source</h2>
             <ul>
               <li><a href="lib/DiscreteGameTheory/Base/">Base</a> &mdash; Sign, Face, SignGame, Dominates, OutsideDom, Nash existence</li>
               <li><a href="lib/DiscreteGameTheory/Refinement/">Refinement</a> &mdash; Betweenness, SignTower, Nash refinement sequence</li>
@@ -66,7 +76,7 @@ jobs:
               <li><a href="lib/DiscreteGameTheory/Invariance/">Invariance</a> &mdash; Ordinal invariance, affine invariance, counterexample</li>
             </ul>
 
-            <h2>Examples</h2>
+            <h2>Examples Source</h2>
             <ul>
               <li><a href="examples/DiscreteGameTheoryExamples/Examples/">Examples</a> &mdash; PD, MP, coordination, pedagogical proofs</li>
               <li><a href="examples/DiscreteGameTheoryExamples/GridTower/">GridTower</a> &mdash; Grid constructions, bilinear towers, compact game examples</li>

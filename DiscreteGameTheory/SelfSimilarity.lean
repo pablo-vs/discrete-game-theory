@@ -31,10 +31,12 @@ variable {I : Type*} [DecidableEq I] [Fintype I]
     The output type T.V (k+n) works because Lean's Nat.add is defined
     recursively on the second argument, so k+(n+1) = (k+n)+1 holds
     definitionally. -/
+-- ANCHOR: embedIter
 def embedIter (T : SignTower I) (k n : ℕ) (i : I) : T.V k i → T.V (k + n) i :=
   match n with
   | 0 => id
   | n + 1 => T.embed (k + n) i ∘ T.embedIter k n i
+-- ANCHOR_END: embedIter
 
 @[simp] theorem embedIter_zero (T : SignTower I) (k : ℕ) (i : I) :
     T.embedIter k 0 i = id := rfl

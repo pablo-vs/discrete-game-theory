@@ -49,7 +49,9 @@ section FinGrid
 
 /-- Grid size at level k: 2^k + 1 points discretizing [0,1].
     Grid point j represents the probability j/2^k. -/
+-- ANCHOR: gridSize
 abbrev gridSize (k : ℕ) : ℕ := 2 ^ k + 1
+-- ANCHOR_END: gridSize
 
 abbrev edgeCount (k : ℕ) : ℕ := 2 ^ k
 
@@ -57,9 +59,10 @@ abbrev edgeCount (k : ℕ) : ℕ := 2 ^ k
 macro "grid_omega" : tactic =>
   `(tactic| (simp only [gridSize, edgeCount, Nat.pow_succ, Nat.mul_comm] at *; omega))
 
-/-- Embed level-k grid point into level-(k+1): j ↦ 2j (preserves j/2^k = 2j/2^(k+1)). -/
+-- ANCHOR: gridEmbed
 def gridEmbed (k : ℕ) (j : Fin (gridSize k)) : Fin (gridSize (k + 1)) :=
   ⟨2 * j.val, by grid_omega⟩
+-- ANCHOR_END: gridEmbed
 
 lemma gridEmbed_injective (k : ℕ) : Function.Injective (gridEmbed k) := by
   intro a b h; simp [gridEmbed, Fin.ext_iff] at h; exact Fin.ext (by omega)
@@ -546,12 +549,16 @@ namespace GridChildren
 -- `boundary_shared`).
 
 /-- Left child: j ↦ j (identity on values). -/
+-- ANCHOR: leftChild
 def leftChild (k : ℕ) (j : Fin (gridSize k)) : Fin (gridSize (k + 1)) :=
   ⟨j.val, by grid_omega⟩
+-- ANCHOR_END: leftChild
 
 /-- Right child: j ↦ j + 2^k. -/
+-- ANCHOR: rightChild
 def rightChild (k : ℕ) (j : Fin (gridSize k)) : Fin (gridSize (k + 1)) :=
   ⟨j.val + 2 ^ k, by grid_omega⟩
+-- ANCHOR_END: rightChild
 
 @[simp] theorem leftChild_val (k : ℕ) (j : Fin (gridSize k)) :
     (leftChild k j).val = j.val := rfl

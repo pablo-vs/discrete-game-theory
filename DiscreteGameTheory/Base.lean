@@ -46,10 +46,12 @@ at each step, and the key invariant `OutsideDom` is preserved.
 /-- A three-valued sign type representing the result of comparing two actions.
     `pos` means the first action is preferred, `neg` means the second is preferred,
     `zero` means indifference. -/
+-- ANCHOR: Sign
 inductive Sign where
   | pos : Sign
   | neg : Sign
   | zero : Sign
+-- ANCHOR_END: Sign
   deriving DecidableEq, Repr
 
 namespace Sign
@@ -154,7 +156,9 @@ A face is a nonempty subset of a finite set.
 It represents a face of a discrete simplex, the span of the vertices it contains.
 -/
 @[reducible]
+-- ANCHOR: Face
 def Face (V : Type*) [DecidableEq V] := { S : Finset V // S.Nonempty }
+-- ANCHOR_END: Face
 
 namespace Face
 
@@ -259,6 +263,7 @@ lemma ConsistentAt.mono {I : Type*} {V : I → Type*} [∀ i, DecidableEq (V i)]
     The axioms require that preferences form a total preorder on each player's actions
     (for any fixed opponent profile), and that player `i`'s preferences depend only on
     opponents' actions, not on `i`'s own action in `p` (`sign_irrel`). -/
+-- ANCHOR: SignGame
 structure SignGame where
   sign : (i : I) → PureProfile I V → V i → V i → Sign
   sign_refl : ∀ i p a, sign i p a a = .zero
@@ -266,6 +271,7 @@ structure SignGame where
   sign_trans : ∀ i p a b c, (sign i p a b).nonneg → (sign i p b c).nonneg →
     (sign i p a c).nonneg
   sign_irrel : ∀ i p q a b, (∀ j, j ≠ i → p j = q j) → sign i p a b = sign i q a b
+-- ANCHOR_END: SignGame
 
 variable {I} {V}
 
@@ -288,9 +294,11 @@ variable (G : SignGame I V)
     This is a conservative (worst-case) notion of dominance — since we don't know the
     exact probability distribution opponents use, we require dominance against *all*
     possible opponent action combinations. -/
+-- ANCHOR: Dominates
 def Dominates (i : I) (σ : Profile I V) (A B : Face (V i)) : Prop :=
   ∀ a ∈ A.1, ∀ p : PureProfile I V,
     ConsistentAt σ i p → ∀ b ∈ B.1, (G.sign i p a b).nonneg
+-- ANCHOR_END: Dominates
 
 -- ================================================================
 -- Section 5: Monotonicity and transitivity
@@ -344,13 +352,13 @@ end Dominates
 /-- Player `i` has a strictly better deviation to face `A` from profile `σ`.
     This means `A` weakly dominates `σ i` (player `i`'s current face), but `σ i` does
     *not* weakly dominate `A` — so `A` is genuinely better in at least one scenario. -/
+-- ANCHOR: StrictDom
 def StrictDom (i : I) (σ : Profile I V) (A : Face (V i)) : Prop :=
   G.Dominates i σ A (σ i) ∧ ¬G.Dominates i σ (σ i) A
 
-/-- A profile `σ` is a Nash equilibrium if no player has any strict deviation — no player
-    can switch to a face that strictly dominates their current face. -/
 def IsNash (σ : Profile I V) : Prop :=
   ∀ (i : I) (A : Face (V i)), ¬G.StrictDom i σ A
+-- ANCHOR_END: StrictDom
 
 -- ================================================================
 -- Section 7: OutsideDom
@@ -365,9 +373,11 @@ def IsNash (σ : Profile I V) : Prop :=
     This is the key invariant maintained by the Nash existence descent algorithm: it ensures
     that restricting a player's face to a dominating subface doesn't invalidate previous
     elimination steps. -/
+-- ANCHOR: OutsideDom
 def OutsideDom (i : I) (σ : Profile I V) : Prop :=
   ∀ v, v ∉ (σ i).1 → ∀ w, w ∈ (σ i).1 →
     G.Dominates i σ (Face.vertex w) (Face.vertex v)
+-- ANCHOR_END: OutsideDom
 
 -- ================================================================
 -- Section 8-9: OutsideDom API
