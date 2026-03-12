@@ -412,7 +412,6 @@ lemma Dominates_embed (k : ℕ) {i : I}
     simp only [embedProfile, embedFace, Finset.mem_map, Function.Embedding.coeFn_mk] at this
     exact this
   -- Build coarse profile q from preimages
-  classical
   set q : Base.PureProfile I (T.V k) :=
     fun m => if hm : m = i then (T.instInhabited k m).default
              else (h_opp m hm).choose

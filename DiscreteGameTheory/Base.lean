@@ -203,8 +203,7 @@ instance (A B : Face V) : Decidable (IsSubface A B) :=
 lemma ext {A B : Face V} (h : A.1 = B.1) : A = B := Subtype.ext h
 
 instance instFintype [Fintype V] : Fintype (Face V) := by
-  classical
-  exact Subtype.fintype _
+  infer_instance
 
 end Face
 

@@ -1,3 +1,5 @@
 .lake
 /.lake
 lake-manifest.json
+html/
+_site/
