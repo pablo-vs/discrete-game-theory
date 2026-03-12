@@ -34,10 +34,8 @@ jobs:
           mkdir -p _site/lib _site/examples
           lake exe verso-html .lake/build/literate/DiscreteGameTheory _site/lib
           lake exe verso-html .lake/build/literate/DiscreteGameTheoryExamples _site/examples
-          lake exe generate-docs _site/docs || true
-          if [ ! -d _site/docs ]; then
-            cp -r _out/html-multi _site/docs
-          fi
+          lake exe generate-docs
+          cp -r _out/html-multi _site/docs
 
       - name: Create landing page
         run: |

@@ -21,13 +21,13 @@ face lattices.
 
 The key ideas:
 
- * A *sign game* records ordinal preferences — which action is better, not by how much.
+ * Games record ordinal preferences — which action is better, not by how much.
 
- * A *face* (nonempty subset of actions) replaces probability distributions as the notion of mixed strategy.
+ * The probabilistic simplex of strategies is replaced by a discrete version. A *face* of the simplex (nonempty subset of vertices) replaces probability distributions as the notion of mixed strategy.
 
- * *Dominance* between faces is conservative: A dominates B only when every action in A beats every action in B against every consistent opponent play. This produces a partial order where incomparability breaks deviation cycles.
+ * Instead of using expected utility, preferences between faces are defined conservatively: A dominates B only when every action in A beats every action in B against every consistent opponent play. This produces a partial preference order on mixed strategies for each player.
 
- * *Nash equilibrium existence* follows from a terminating descent algorithm that starts fully mixed and eliminates dominated actions.
+ * *Nash equilibrium existence* follows from a terminating descent algorithm that starts considering the mixture of all actions and eliminates dominated actions.
 
  * A *refinement tower* interpolates between ordinal and cardinal game theory by refining the discrete simplex into finer grids, recovering von Neumann-Morgenstern expected utility in the limit.
 

@@ -217,10 +217,14 @@ end Face
 
 variable (I : Type*) [DecidableEq I] (V : I → Type*) [∀ i, DecidableEq (V i)]
 
+-- ANCHOR: PureProfile
 /-- A pure profile is a choice of action for each player. -/
 abbrev PureProfile := ∀ i : I, V i
+-- ANCHOR_END: PureProfile
+-- ANCHOR: Profile
 /-- A profile is a choice of face (mixed strategy) for each player. -/
 abbrev Profile := ∀ i : I, Face (V i)
+-- ANCHOR_END: Profile
 
 /-- A deviation σ[i ↦ A] is a new profile in which player i selects A. -/
 scoped notation σ "[" i " ↦ " A "]" => Function.update σ i A
@@ -562,8 +566,10 @@ theorem nash_exists_of_outsideDom [Fintype I]
 
 /-- **Main theorem**: every finite sign game has a Nash equilibrium.
     Proved by starting from the fully mixed profile and applying the descent algorithm. -/
+-- ANCHOR: nash_exists
 theorem nash_exists [Fintype I] [∀ i, Fintype (V i)] [∀ i, Nonempty (V i)] :
     ∃ σ, G.IsNash σ :=
+-- ANCHOR_END: nash_exists
   nash_exists_of_outsideDom G (fun _ => Face.full) (fun i => OutsideDom.maximal G i)
 
 -- ================================================================

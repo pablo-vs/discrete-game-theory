@@ -15,7 +15,7 @@ open Base
 #doc (Manual) "Games and Nash Equilibria" =>
 
 Game theory studies strategic interactions: a set of players, each choosing actions, each with
-preferences over outcomes. The central concept is *Nash equilibrium* — a combination of
+preferences over outcomes defined by a payoff table. The fundamental concept is *Nash equilibrium* — a combination of
 strategies where no player can improve by changing only their own choice.
 
 Standard game theory builds on real-valued payoffs and probability distributions, proving Nash
@@ -25,7 +25,12 @@ structures.
 # Sign Games
 
 A game has a finite set of players. Each player has a finite set of actions. A _pure profile_ is
-a choice of action for every player.
+defined as a choice of action for every player.
+
+```anchor PureProfile
+/-- A pure profile is a choice of action for each player. -/
+abbrev PureProfile := ∀ i : I, V i
+```
 
 In standard game theory, each player has a payoff function. We replace this with something weaker:
 for each player, each profile, and each pair of actions, we record a _sign_ — positive if the
@@ -60,22 +65,32 @@ same sign game — the theory is ordinal, not cardinal.
 # Faces as Mixed Strategies
 
 In standard game theory, players randomize using probability distributions over actions. We use
-a discrete analogue: a _face_ is a nonempty subset of actions.
+a discrete analogue: a _face_ is a nonempty subset of actions.  Intuitively
+a face represents an unknown probability distribution, this intuition will be formalized
+in (TODO reference refinement section)
 
 ```anchor Face
 def Face (V : Type*) [DecidableEq V] := { S : Finset V // S.Nonempty }
 ```
 
 The face \{a, b\} represents "some distribution supported on a and b," without specifying
-which one. A vertex \{a\} is a pure strategy. The full face is the maximally mixed strategy.
-Mixing is set union — commutative, associative, idempotent.
+which one. The name comes from the simplex, which all the possible mixtures of a set of
+vertices form a face. A vertex \{a\} is a pure strategy. The full face (the whole simplex)
+is the maximally mixed strategy. Mixing is set union — commutative, associative, idempotent.
 
 A _profile_ assigns a face to each player.
 
+```anchor Profile
+/-- A profile is a choice of face (mixed strategy) for each player. -/
+abbrev Profile := ∀ i : I, Face (V i)
+```
+
 # Dominance
 
-Face A dominates face B for player i when every action in A is at least as good as every
-action in B, against every consistent opponent play.
+In standard game theory one uses expected utility to extend a value function of pure actions
+to one of probabilistic actions. The analogous ordinal concept is a preference order on faces
+derived from the order on pure actions. Face A dominates face B for player i when every action
+in A is at least as good as every action in B, against every consistent opponent play.
 
 ```anchor Dominates
 def Dominates (i : I) (σ : Profile I V) (A B : Face (V i)) : Prop :=
@@ -84,8 +99,8 @@ def Dominates (i : I) (σ : Profile I V) (A B : Face (V i)) : Prop :=
 ```
 
 This conservative comparison produces a *partial order*. Two faces can be genuinely incomparable —
-and this is the key insight. In Matching Pennies, when the opponent mixes fully, neither Heads nor
-Tails dominates the other. The deviation cycle dissolves into incomparability.
+and this is the key insight that makes it possible to prove the existence of Nash equilibria,
+as we'll see later.
 
 A _strict deviation_ exists when A dominates the current face but not vice versa. A profile is
 *Nash* when no player has a strict deviation:
@@ -98,17 +113,35 @@ def IsNash (σ : Profile I V) : Prop :=
   ∀ (i : I) (A : Face (V i)), ¬G.StrictDom i σ A
 ```
 
+# Examples
+
+TODO: show payoff orderings for PD and MP, not in code, just as AB < BA-style.
+Then show how they are defined in code, using numbers for convenience. Show
+the full 3x3 Dominance ordering for both players for both games, perhaps with a
+3x3 table and <, <=, =, >=, > or some sign denoting incomparability between each
+pair of cells.
+
+Use #check isNash to show the Nash equilibria of each game.
+
+The Prisoner's Dilemma has a unique pure Nash at mutual defection:
+
+Matching Pennies has no pure Nash — whatever pure profile you pick, one player wants to switch:
+
+But the fully mixed profile (both players play both actions) is Nash — incomparability breaks
+the cycle.
+
+
 # Nash Existence
 
 Every finite game has a Nash equilibrium:
 
-```lean
-example : ∀ (G : SignGame (Fin 2) (fun _ : Fin 2 => Bool)), ∃ σ, G.IsNash σ :=
-  fun G => G.nash_exists
+```anchor nash_exists
+theorem nash_exists [Fintype I] [∀ i, Fintype (V i)] [∀ i, Nonempty (V i)] :
+    ∃ σ, G.IsNash σ :=
 ```
 
-The proof is a descent algorithm. It starts from the fully mixed profile (every player plays every
-action) and iteratively eliminates dominated actions.
+The proof is a descent algorithm. It starts from the fully mixed profile (every player plays
+a mix of every action) and iteratively eliminates dominated actions.
 
 The algorithm maintains the *OutsideDom (OD)* invariant: for each player, every action outside
 the current face is dominated by every action inside:
@@ -126,29 +159,3 @@ decreases, so the algorithm terminates.
 OD is preserved because: for the restricting player, the new face dominates the old, so it
 dominates the already-dominated outside actions. For other players, antitonicity applies —
 shrinking an opponent's face only makes domination easier.
-
-# Examples
-
-The Prisoner's Dilemma has a unique pure Nash at mutual defection:
-
-```lean
-example : ∀ p : PureProfile (Fin 2) (fun _ : Fin 2 => Bool),
-    pd.IsPureNash p ↔ p = (fun _ => false) :=
-  pd_unique_pureNash
-```
-
-Matching Pennies has no pure Nash — whatever pure profile you pick, one player wants to switch:
-
-```lean
-example : ∀ p : PureProfile (Fin 2) (fun _ : Fin 2 => Bool),
-    ¬mp.IsPureNash p :=
-  mp_no_pureNash
-```
-
-But the fully mixed profile (both players play both actions) is Nash — incomparability breaks
-the cycle:
-
-```lean
-example : mp.IsNash (fun _ : Fin 2 => Face.full (V := Bool)) :=
-  mp_mixed_nash
-```
