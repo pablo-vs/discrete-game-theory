@@ -29,7 +29,7 @@ at each step, and the key invariant `OutsideDom` is preserved.
 * `Face V`                  : Nonempty subsets `{ S : Finset V // S.Nonempty }`
 * `PureProfile I V`         : A choice of one action per player: `∀ i, V i`
 * `Profile I V`             : A choice of face (mixed strategy) per player: `∀ i, Face (V i)`
-* `SignGame I V`            : Sign function with refl/antisym/trans/irrel axioms
+* `SignGame I V`            : Cross-profile sign function with refl/antisym/trans axioms
 * `Dominates i σ A B`       : Face A weakly dominates face B for player i in context σ
 * `StrictDom i σ A`         : A strictly dominates σ i (dominates but is not dominated back)
 * `IsNash σ`                : No player has a strict deviation: `∀ i A, ¬ StrictDom i σ A`
@@ -114,6 +114,16 @@ lemma mul_nonneg {s t : Sign} (hs : s.nonneg) (ht : t.nonneg) : (mul s t).nonneg
 lemma nonneg_mul_flip_of_not_nonneg {s t : Sign} (hs : ¬s.nonneg) (ht : ¬t.nonneg) :
     (mul s t).nonneg := by
   cases s <;> cases t <;> simp_all [mul, nonneg, flip]
+
+/-- Embed signs into integers: `pos ↦ 1`, `neg ↦ -1`, `zero ↦ 0`. -/
+def toInt : Sign → Int
+  | .pos => 1
+  | .neg => -1
+  | .zero => 0
+
+@[simp] theorem toInt_pos : pos.toInt = 1 := rfl
+@[simp] theorem toInt_neg : neg.toInt = -1 := rfl
+@[simp] theorem toInt_zero : zero.toInt = 0 := rfl
 
 end Sign
 
@@ -259,22 +269,20 @@ lemma ConsistentAt.mono {I : Type*} {V : I → Type*} [∀ i, DecidableEq (V i)]
 
 /-- An N-player sign game over player set `I` and action types `V`.
 
-    For each player `i`, `sign i p a b` returns the preference of `i` between playing
-    action `a` versus action `b`, given that all players are playing according to pure
-    profile `p`. The result is `pos` if `a` is preferred, `neg` if `b` is preferred,
+    For each player `i`, `sign i p q` returns the preference of `i` between outcome `p`
+    versus outcome `q`. The result is `pos` if `p` is preferred, `neg` if `q` is preferred,
     `zero` if indifferent.
 
-    The axioms require that preferences form a total preorder on each player's actions
-    (for any fixed opponent profile), and that player `i`'s preferences depend only on
-    opponents' actions, not on `i`'s own action in `p` (`sign_irrel`). -/
+    The axioms require that preferences form a total preorder on outcomes for each player.
+    The within-profile comparison `signAction` (comparing two actions holding opponents
+    fixed) is derived as `sign i (p[i↦a]) (p[i↦b])`. -/
 -- ANCHOR: SignGame
 structure SignGame where
-  sign : (i : I) → PureProfile I V → V i → V i → Sign
-  sign_refl : ∀ i p a, sign i p a a = .zero
-  sign_antisym : ∀ i p a b, sign i p a b = (sign i p b a).flip
-  sign_trans : ∀ i p a b c, (sign i p a b).nonneg → (sign i p b c).nonneg →
-    (sign i p a c).nonneg
-  sign_irrel : ∀ i p q a b, (∀ j, j ≠ i → p j = q j) → sign i p a b = sign i q a b
+  sign : (i : I) → PureProfile I V → PureProfile I V → Sign
+  sign_refl : ∀ i p, sign i p p = .zero
+  sign_antisym : ∀ i p q, sign i p q = (sign i q p).flip
+  sign_trans : ∀ i p q r, (sign i p q).nonneg → (sign i q r).nonneg →
+    (sign i p r).nonneg
 -- ANCHOR_END: SignGame
 
 variable {I} {V}
@@ -283,6 +291,35 @@ namespace SignGame
 
 variable {I : Type*} [DecidableEq I] {V : I → Type*} [∀ i, DecidableEq (V i)]
 variable (G : SignGame I V)
+
+/-- Within-profile action comparison: compares playing `a` vs `b` for player `i`,
+    holding opponents fixed at `p`. Defined as `sign i (p[i↦a]) (p[i↦b])`. -/
+abbrev signAction (i : I) (p : PureProfile I V) (a b : V i) : Sign :=
+  G.sign i (p[i ↦ a]) (p[i ↦ b])
+
+lemma signAction_refl (i : I) (p : PureProfile I V) (a : V i) :
+    G.signAction i p a a = .zero :=
+  G.sign_refl i _
+
+lemma signAction_antisym (i : I) (p : PureProfile I V) (a b : V i) :
+    G.signAction i p a b = (G.signAction i p b a).flip :=
+  G.sign_antisym i _ _
+
+lemma signAction_trans (i : I) (p : PureProfile I V) (a b c : V i)
+    (hab : (G.signAction i p a b).nonneg) (hbc : (G.signAction i p b c).nonneg) :
+    (G.signAction i p a c).nonneg :=
+  G.sign_trans i _ _ _ hab hbc
+
+lemma signAction_irrel (i : I) (p q : PureProfile I V) (a b : V i)
+    (h : ∀ j, j ≠ i → p j = q j) :
+    G.signAction i p a b = G.signAction i q a b := by
+  show G.sign i (Function.update p i a) (Function.update p i b) =
+       G.sign i (Function.update q i a) (Function.update q i b)
+  congr 1 <;> ext j <;> by_cases hji : j = i
+  · subst hji; simp [Function.update_self]
+  · simp [Function.update_of_ne hji, h j hji]
+  · subst hji; simp [Function.update_self]
+  · simp [Function.update_of_ne hji, h j hji]
 
 -- ================================================================
 -- Section 4: Dominates
@@ -301,7 +338,7 @@ variable (G : SignGame I V)
 -- ANCHOR: Dominates
 def Dominates (i : I) (σ : Profile I V) (A B : Face (V i)) : Prop :=
   ∀ a ∈ A.1, ∀ p : PureProfile I V,
-    ConsistentAt σ i p → ∀ b ∈ B.1, (G.sign i p a b).nonneg
+    ConsistentAt σ i p → ∀ b ∈ B.1, (G.signAction i p a b).nonneg
 -- ANCHOR_END: Dominates
 
 -- ================================================================
@@ -310,42 +347,38 @@ def Dominates (i : I) (σ : Profile I V) (A B : Face (V i)) : Prop :=
 
 namespace Dominates
 
-omit G [DecidableEq I] in
 /-- Antitonicity in opponent faces: if `A` dominates `B` against the larger opponent
     profile `τ`, it also dominates against the smaller profile `σ` (where each opponent's
     face is a subface of the corresponding face in `τ`). Larger opponent faces mean more
     opponent scenarios to check, so domination against a larger profile is stronger. -/
-protected lemma antitone (G : SignGame I V) {i : I} {σ τ : Profile I V}
+protected lemma antitone {i : I} {σ τ : Profile I V}
     (h : ∀ j, j ≠ i → Face.IsSubface (σ j) (τ j))
     {A B : Face (V i)} (hle : G.Dominates i τ A B) :
     G.Dominates i σ A B :=
   fun a ha p hp b hb => hle a ha p (hp.mono h) b hb
 
-omit G [DecidableEq I] in
 /-- Left monotonicity: if `A'` dominates `B`, then any subface `A ⊆ A'` also dominates `B`,
     since fewer actions in `A` means fewer conditions to satisfy. -/
-protected lemma mono_left (G : SignGame I V) {i : I} {σ : Profile I V} {A A' B : Face (V i)}
+protected lemma mono_left {i : I} {σ : Profile I V} {A A' B : Face (V i)}
     (h : Face.IsSubface A A') (hle : G.Dominates i σ A' B) :
     G.Dominates i σ A B :=
   fun a ha p hp b hb => hle a (h ha) p hp b hb
 
-omit G [DecidableEq I] in
 /-- Right monotonicity: if `A` dominates the larger face `B'`, then `A` dominates any
     subface `B ⊆ B'`, since there are fewer actions in `B` that need to be dominated. -/
-protected lemma mono_right (G : SignGame I V) {i : I} {σ : Profile I V} {A B B' : Face (V i)}
+protected lemma mono_right {i : I} {σ : Profile I V} {A B B' : Face (V i)}
     (h : Face.IsSubface B B') (hle : G.Dominates i σ A B') :
     G.Dominates i σ A B :=
   fun a ha p hp b hb => hle a ha p hp b (h hb)
 
-omit G [DecidableEq I] in
 /-- Transitivity: if `A` dominates `B` and `B` dominates `C`, then `A` dominates `C`.
     Uses the transitivity of the underlying sign function (`sign_trans`). -/
-protected lemma trans (G : SignGame I V) {i : I} {σ : Profile I V} {A B C : Face (V i)}
+protected lemma trans {i : I} {σ : Profile I V} {A B C : Face (V i)}
     (hAB : G.Dominates i σ A B) (hBC : G.Dominates i σ B C) :
     G.Dominates i σ A C := by
   intro a ha p hp c hc
   obtain ⟨b, hb⟩ := B.2
-  exact G.sign_trans i p a b c (hAB a ha p hp b hb) (hBC b hb p hp c hc)
+  exact G.signAction_trans i p a b c (hAB a ha p hp b hb) (hBC b hb p hp c hc)
 
 end Dominates
 
@@ -389,11 +422,10 @@ def OutsideDom (i : I) (σ : Profile I V) : Prop :=
 
 namespace OutsideDom
 
-omit G [DecidableEq I] in
 /-- The full profile (every player plays every action) trivially satisfies OutsideDom,
     since there are no excluded actions to check. This is the starting point of the
     Nash descent algorithm. -/
-protected lemma maximal (G : SignGame I V) (i : I)
+protected lemma maximal (i : I)
     [∀ j, Fintype (V j)] [∀ j, Nonempty (V j)] :
     G.OutsideDom i (fun _ => Face.full) :=
   fun v hv => absurd (Finset.mem_univ v) hv
@@ -439,7 +471,7 @@ protected lemma preserved_other {i j : I} (hij : j ≠ i)
     G.OutsideDom j (σ[i ↦ A]) := by
   intro v hv w hw
   rw [Function.update_of_ne hij] at hv hw
-  apply Dominates.antitone G (i := j) (σ := σ[i ↦ A]) (τ := σ)
+  apply Dominates.antitone G (σ := σ[i ↦ A]) (τ := σ)
   · intro k hk
     by_cases hki : k = i
     · subst hki; exact fun x hx => h_sub (by rwa [Function.update_self] at hx)
@@ -452,7 +484,6 @@ end OutsideDom
 -- Section 10: Restricting deviations
 -- ================================================================
 
-omit [DecidableEq I] in
 /-- When OutsideDom holds and `σ i` does not dominate `A`, the witnessing action `b ∈ A`
     (the one that `σ i` fails to dominate) must actually lie in `σ i`.
 
@@ -467,7 +498,7 @@ private lemma outsideDom_witness_mem {i : I} {σ : Profile I V} {A : Face (V i)}
     (h_neg : ¬G.Dominates i σ (σ i) A) :
     ∃ a ∈ (σ i).1, ∃ p : PureProfile I V,
       ConsistentAt σ i p ∧
-      ∃ b ∈ A.1, ¬(G.sign i p a b).nonneg ∧ b ∈ (σ i).1 := by
+      ∃ b ∈ A.1, ¬(G.signAction i p a b).nonneg ∧ b ∈ (σ i).1 := by
   simp only [Dominates, ConsistentAt] at h_neg; push_neg at h_neg
   obtain ⟨a, ha, p, hp, b, hb, hn⟩ := h_neg
   by_cases hb_σ : b ∈ (σ i).1
@@ -476,7 +507,6 @@ private lemma outsideDom_witness_mem {i : I} {σ : Profile I V} {A : Face (V i)}
       (h_inv b hb_σ a ha a (Finset.mem_singleton_self _) p hp b (Finset.mem_singleton_self _))
       hn
 
-omit [DecidableEq I] in
 /-- **Restriction lemma**: any strict deviation can be "restricted" to a subface of the
     current face.
 
@@ -624,30 +654,18 @@ theorem nash_exists_sub_of_outsideDom [Fintype I]
     strictly monotone transformation of each player's payoffs produces the same game
     (see `ofPayoffs_strictMono_invariant` in `Invariance.lean`). -/
 def ofPayoffs [Fintype I]
-    (u : (i : I) → (∀ j, V j) → Int) : SignGame I V where
-  sign i p a b :=
-    let pa := Function.update p i a
-    let pb := Function.update p i b
-    if u i pa > u i pb then .pos
-    else if u i pa = u i pb then .zero
+    (u : (i : I) → PureProfile I V → Int) : SignGame I V where
+  sign i p q :=
+    if u i p > u i q then .pos
+    else if u i p = u i q then .zero
     else .neg
-  sign_refl i p a := by simp
-  sign_antisym i p a b := by
+  sign_refl i p := by simp
+  sign_antisym i p q := by
     simp only [Sign.flip]
     split_ifs <;> first | rfl | omega
-  sign_trans i p a b c := by
+  sign_trans i p q r := by
     simp only [Sign.nonneg]
     split_ifs <;> simp_all; omega
-  sign_irrel i p q a b h := by
-    have hpa : Function.update p i a = Function.update q i a := by
-      ext j; by_cases hji : j = i
-      · subst hji; simp [Function.update_self]
-      · simp [Function.update_of_ne hji, h j hji]
-    have hpb : Function.update p i b = Function.update q i b := by
-      ext j; by_cases hji : j = i
-      · subst hji; simp [Function.update_self]
-      · simp [Function.update_of_ne hji, h j hji]
-    simp only [hpa, hpb]
 
 -- ================================================================
 -- Section 15: Pure Nash and examples
@@ -657,7 +675,7 @@ def ofPayoffs [Fintype I]
     to any other action, holding all opponents fixed. Equivalently, `sign i p (p i) v ≥ 0`
     for all players `i` and alternative actions `v`. -/
 def IsPureNash (p : PureProfile I V) : Prop :=
-  ∀ (i : I) (v : V i), (G.sign i p (p i) v).nonneg
+  ∀ (i : I) (v : V i), (G.signAction i p (p i) v).nonneg
 
 end SignGame
 

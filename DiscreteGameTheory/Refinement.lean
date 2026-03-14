@@ -45,7 +45,8 @@ axiom (fine_between_embedded_at).
 namespace Refinement
 
 open Base (Sign Face cmpSign)
-open Base.SignGame (Dominates OutsideDom)
+open scoped Base
+open Base.SignGame (Dominates OutsideDom signAction)
 
 /-- A betweenness relation on a type. `between c a b` means c lies
     on the segment from a to b. -/
@@ -199,29 +200,31 @@ structure SignTower (I : Type*) [DecidableEq I] [Fintype I] where
     (betw k i).between c a b →
     (betw (k+1) i).between (embed k i c) (embed k i a) (embed k i b)
   coherent : ∀ k i (p : Base.PureProfile I (V k)) (a b : V k i),
-    (game (k+1)).sign i (embedPureProfile (embed k) p) (embed k i a) (embed k i b)
-    = (game k).sign i p a b
+    (game (k+1)).sign i
+      ((embedPureProfile (embed k) p)[i ↦ embed k i a])
+      ((embedPureProfile (embed k) p)[i ↦ embed k i b])
+    = (game k).sign i (p[i ↦ a]) (p[i ↦ b])
   playerConvex_left : ∀ k i (p : Base.PureProfile I (V k))
     (a b c x : V k i),
     (betw k i).between c a b →
-    ((game k).sign i p a x).nonneg →
-    ((game k).sign i p b x).nonneg →
-    ((game k).sign i p c x).nonneg
+    ((game k).sign i (p[i ↦ a]) (p[i ↦ x])).nonneg →
+    ((game k).sign i (p[i ↦ b]) (p[i ↦ x])).nonneg →
+    ((game k).sign i (p[i ↦ c]) (p[i ↦ x])).nonneg
   playerConvex_right : ∀ k i (p : Base.PureProfile I (V k))
     (a b c x : V k i),
     (betw k i).between c a b →
-    ((game k).sign i p x a).nonneg →
-    ((game k).sign i p x b).nonneg →
-    ((game k).sign i p x c).nonneg
+    ((game k).sign i (p[i ↦ x]) (p[i ↦ a])).nonneg →
+    ((game k).sign i (p[i ↦ x]) (p[i ↦ b])).nonneg →
+    ((game k).sign i (p[i ↦ x]) (p[i ↦ c])).nonneg
   opponentConvex : ∀ k i (j : I) (_hj : j ≠ i)
     (p q : Base.PureProfile I (V k)) (a b : V k i),
     (∀ m, m ≠ j → p m = q m) →
     ∀ (r : Base.PureProfile I (V k)),
     (∀ m, m ≠ j → r m = p m) →
     (betw k j).between (r j) (p j) (q j) →
-    ((game k).sign i p a b).nonneg →
-    ((game k).sign i q a b).nonneg →
-    ((game k).sign i r a b).nonneg
+    ((game k).sign i (p[i ↦ a]) (p[i ↦ b])).nonneg →
+    ((game k).sign i (q[i ↦ a]) (q[i ↦ b])).nonneg →
+    ((game k).sign i (r[i ↦ a]) (r[i ↦ b])).nonneg
   /-- Every fine action lies between two embedded coarse actions (spanning). -/
   fine_between_embedded_at : ∀ k i (v : V (k+1) i) (a : V k i),
     ∃ b : V k i, (betw (k+1) i).between v (embed k i a) (embed k i b)
@@ -255,7 +258,7 @@ def faceClosure (k : ℕ) (i : I) (F : Face (T.V k i)) : Face (T.V k i) :=
 lemma Dominates_update_self (k : ℕ) {i : I}
     {σ : Base.Profile I (T.V k)} {F : Face (T.V k i)}
     {A B : Face (T.V k i)} :
-    (T.game k).Dominates i (Function.update σ i F) A B ↔
+    (T.game k).Dominates i (σ[i ↦ F]) A B ↔
     (T.game k).Dominates i σ A B := by
   constructor
   · intro h a ha p hp b hb
@@ -286,7 +289,7 @@ lemma Dominates_convClosure_left (k : ℕ) {i : I}
     (h : (T.game k).Dominates i σ A B) :
     (T.game k).Dominates i σ (T.faceClosure k i A) B := by
   intro a ha p hp b hb
-  exact convClosure_pred A (fun v => ((T.game k).sign i p v b).nonneg)
+  exact convClosure_pred A (fun v => ((T.game k).signAction i p v b).nonneg)
     (fun v hv => h v hv p hp b hb)
     (fun v₁ v₂ c h₁ h₂ hc => T.playerConvex_left k i p v₁ v₂ c b hc h₁ h₂) ha
 
@@ -295,7 +298,7 @@ lemma Dominates_convClosure_right (k : ℕ) {i : I}
     (h : (T.game k).Dominates i σ A B) :
     (T.game k).Dominates i σ A (T.faceClosure k i B) := by
   intro a ha p hp b hb
-  exact convClosure_pred B (fun v => ((T.game k).sign i p a v).nonneg)
+  exact convClosure_pred B (fun v => ((T.game k).signAction i p a v).nonneg)
     (fun v hv => h a ha p hp v hv)
     (fun v₁ v₂ c h₁ h₂ hc => T.playerConvex_right k i p v₁ v₂ c a hc h₁ h₂) hb
 
@@ -304,12 +307,12 @@ lemma Dominates_convClosure_right (k : ℕ) {i : I}
 lemma Dominates_convClosure_opp (k : ℕ) {i : I} (j : I) (hj : j ≠ i)
     {σ : Base.Profile I (T.V k)} {A B : Face (T.V k i)}
     (h : (T.game k).Dominates i σ A B) :
-    (T.game k).Dominates i (Function.update σ j (T.faceClosure k j (σ j))) A B := by
+    (T.game k).Dominates i (σ[j ↦ T.faceClosure k j (σ j)]) A B := by
   intro a ha p hp b hb
   have hpj : p j ∈ (T.faceClosure k j (σ j)).val := by
     have := hp j hj; rwa [Function.update_self] at this
   have := @convClosure_pred _ _ _ (T.betw k j) (σ j)
-    (fun v => ((T.game k).sign i (Function.update p j v) a b).nonneg) _
+    (fun v => ((T.game k).signAction i (Function.update p j v) a b).nonneg) _
     (fun v hv => h a ha (Function.update p j v)
       (fun m hm => by
         by_cases hmj : m = j
@@ -395,7 +398,7 @@ lemma OutsideDom_convexClosureProfile (k : ℕ)
   intro a ha p hp b hb
   simp [Face.vertex] at ha hb
   rw [ha, hb]
-  exact convClosure_pred (σ i) (fun u => ((T.game k).sign i p u v').nonneg)
+  exact convClosure_pred (σ i) (fun u => ((T.game k).signAction i p u v').nonneg)
     (fun w₀ hw₀ => h_ext w₀ hw₀ w₀ (by simp [Face.vertex]) p hp v' (by simp [Face.vertex]))
     (fun v₁ v₂ c h₁ h₂ hc => T.playerConvex_left k i p v₁ v₂ c v' hc h₁ h₂) hw'
 
@@ -423,12 +426,19 @@ lemma Dominates_embed (k : ℕ) {i : I}
   set q : Base.PureProfile I (T.V k) :=
     fun m => if hm : m = i then (T.instInhabited k m).default
              else (h_opp m hm).choose
-  -- sign_irrel: replace p' by embed(q)
-  have hirrel : (T.game (k+1)).sign i p' (T.embed k i a) (T.embed k i b) =
-      (T.game (k+1)).sign i (embedPureProfile (T.embed k) q) (T.embed k i a) (T.embed k i b) :=
-    (T.game (k+1)).sign_irrel i p' _ _ _ fun m hm => by
-      simp [embedPureProfile, q, hm]; exact ((h_opp m hm).choose_spec.2).symm
-  rw [hirrel, T.coherent]
+  -- signAction on p' equals signAction on embedPureProfile q (profiles agree at all positions)
+  have hirrel : (T.game (k+1)).signAction i p' (T.embed k i a) (T.embed k i b) =
+      (T.game (k+1)).signAction i (embedPureProfile (T.embed k) q)
+        (T.embed k i a) (T.embed k i b) := by
+    show (T.game (k+1)).sign i _ _ = (T.game (k+1)).sign i _ _
+    congr 1 <;> ext m <;> simp only [Function.update] <;> split
+    · rfl
+    · next hm => simp [embedPureProfile, q, hm];
+                  exact ((h_opp m hm).choose_spec.2).symm
+    · rfl
+    · next hm => simp [embedPureProfile, q, hm];
+                  exact ((h_opp m hm).choose_spec.2).symm
+  simp only [hirrel, Base.SignGame.signAction, T.coherent]
   exact h a ha q (fun m hm => by simp [q, hm]; exact (h_opp m hm).choose_spec.1) b hb
 
 /-- **OD transfer across levels** — the main technical result.
@@ -459,7 +469,7 @@ theorem outsideDom_embed_convClosure (k : ℕ)
   rw [ha, hb]
   -- Step 1: embedded inside vs embedded outside
   have step1 : ∀ w₀ ∈ (σ i).val, ∀ v₀ ∉ (σ i).val,
-      ((T.game (k+1)).sign i p (T.embed k i w₀) (T.embed k i v₀)).nonneg := by
+      ((T.game (k+1)).signAction i p (T.embed k i w₀) (T.embed k i v₀)).nonneg := by
     intro w₀ hw₀ v₀ hv₀
     have h_dfle := T.Dominates_convexClosureProfile (k+1) (T.Dominates_embed k (h_od i v₀ hv₀ w₀ hw₀))
     exact h_dfle (T.embed k i w₀)
@@ -468,16 +478,16 @@ theorem outsideDom_embed_convClosure (k : ℕ)
       (Finset.mem_map_of_mem _ (by simp [Face.vertex]))
   -- Step 2: embedded inside vs arbitrary outside (uses fine_between_embedded_at)
   have step2 : ∀ w₀ ∈ (σ i).val,
-      ((T.game (k+1)).sign i p (T.embed k i w₀) v').nonneg := by
+      ((T.game (k+1)).signAction i p (T.embed k i w₀) v').nonneg := by
     intro w₀ hw₀
     obtain ⟨b₀, hbetw⟩ := T.fine_between_embedded_at k i v' w₀
     have hb₀ : b₀ ∉ (σ i).val := T.outside_betw_witness_outside k i (σ i) w₀ hw₀ v' hv' b₀ hbetw
-    have hrefl : ((T.game (k+1)).sign i p (T.embed k i w₀) (T.embed k i w₀)).nonneg := by
-      rw [(T.game (k+1)).sign_refl]; exact Sign.nonneg_zero
+    have hrefl : ((T.game (k+1)).signAction i p (T.embed k i w₀) (T.embed k i w₀)).nonneg := by
+      exact (T.game (k+1)).signAction_refl i p (T.embed k i w₀) ▸ Sign.nonneg_zero
     exact T.playerConvex_right (k+1) i p (T.embed k i w₀) (T.embed k i b₀) v'
       (T.embed k i w₀) hbetw hrefl (step1 w₀ hw₀ b₀ hb₀)
   -- Step 3: extend to full convex closure via playerConvex_left
-  exact convClosure_pred (σ' i) (fun u => ((T.game (k+1)).sign i p u v').nonneg)
+  exact convClosure_pred (σ' i) (fun u => ((T.game (k+1)).signAction i p u v').nonneg)
     (fun u hu => by
       simp only [σ', embedProfile, embedFace, Finset.mem_map, Function.Embedding.coeFn_mk] at hu
       obtain ⟨w₀, hw₀, rfl⟩ := hu

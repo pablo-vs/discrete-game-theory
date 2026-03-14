@@ -39,13 +39,13 @@ omit [DecidableEq I] [∀ i, DecidableEq (V i)] in
 -- ANCHOR: SignGame.ext'
 @[ext]
 lemma SignGame.ext' {G H : SignGame I V}
-    (h : ∀ i p a b,
-      G.sign i p a b = H.sign i p a b) :
+    (h : ∀ i p q,
+      G.sign i p q = H.sign i p q) :
     G = H := by
 -- ANCHOR_END: SignGame.ext'
   have hsign : G.sign = H.sign :=
     funext fun i => funext fun p =>
-      funext fun a => funext fun b => h i p a b
+      funext fun q => h i p q
   cases G; cases H; subst hsign; rfl
 
 -- ================================================================
@@ -62,12 +62,10 @@ theorem ofPayoffs_strictMono_invariant [Fintype I]
     SignGame.ofPayoffs u := by
 -- ANCHOR_END: ofPayoffs_strictMono_invariant
   apply SignGame.ext'
-  intro i p a b
+  intro i p q
   simp only [SignGame.ofPayoffs]
-  have hlt := (hf i).lt_iff_lt (a := u i (Function.update p i a))
-    (b := u i (Function.update p i b))
-  have heq := (hf i).injective.eq_iff (a := u i (Function.update p i a))
-    (b := u i (Function.update p i b))
+  have hlt := (hf i).lt_iff_lt (a := u i p) (b := u i q)
+  have heq := (hf i).injective.eq_iff (a := u i p) (b := u i q)
   split_ifs <;> simp_all <;> omega
 
 -- ================================================================
@@ -135,5 +133,33 @@ lemma pd_same_sign_game :
   rw [show pdPayoff' = (fun i q => 2 * pdPayoff i q + 1) from pd_transform.symm]
   exact ofPayoffs_strictMono_invariant pdPayoff (fun _ => fun x => 2 * x + 1)
     (fun _ => strictMono_2x_plus_1)
+
+-- ================================================================
+-- Section 5: Tower-compatible payoff families
+-- ================================================================
+
+open Refinement (SignTower embedPureProfile)
+
+/-- A payoff family `U` is tower-compatible with a `SignTower T` if:
+    1. At each level, `ofPayoffs (U k)` recovers the sign game `T.game k`.
+    2. Payoffs are coherent across levels: `U k i p = U (k+1) i (embed p)`.
+    The second condition prevents constructing a compatible U that respects
+    the affine structure at each level individually but not across levels. -/
+structure TowerCompatible {I : Type*} [DecidableEq I] [Fintype I]
+    (T : SignTower I)
+    (U : (k : ℕ) → (i : I) → Base.PureProfile I (T.V k) → Int) : Prop where
+  recovers : ∀ k, SignGame.ofPayoffs (U k) = T.game k
+  coherent : ∀ k i (p : Base.PureProfile I (T.V k)),
+    U k i p = U (k+1) i (embedPureProfile (T.embed k) p)
+
+/-- Any tower-compatible payoff family produces the same Nash equilibria
+    as the tower's games — immediate from the `recovers` condition. -/
+theorem TowerCompatible.isNash_iff {I : Type*} [DecidableEq I] [Fintype I]
+    {T : SignTower I}
+    {U : (k : ℕ) → (i : I) → Base.PureProfile I (T.V k) → Int}
+    (hU : TowerCompatible T U) (k : ℕ)
+    (σ : Base.Profile I (T.V k)) :
+    (SignGame.ofPayoffs (U k)).IsNash σ ↔ (T.game k).IsNash σ := by
+  rw [hU.recovers]
 
 end Invariance
