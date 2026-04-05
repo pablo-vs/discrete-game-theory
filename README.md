@@ -6,8 +6,8 @@ The formalization is fully constructive — no `classical`, `noncomputable`, `so
 
 ## Structure
 
-- **`DiscreteGameTheory/`** — core library: sign games, face lattices, dominance, Nash equilibrium existence, refinement towers, self-similarity, invariance theorems.
-- **`DiscreteGameTheoryExamples/`** — worked examples: Prisoner's Dilemma, Matching Pennies, coordination games, Battle of the Sexes, grid tower constructions, compact game examples.
+- **`DiscreteGameTheory/Base.lean`** — core library: sign games, face lattices, dominance, Nash equilibrium existence.
+- **`DiscreteGameTheory/Examples.lean`** — example games and Nash equilibrium computations.
 
 ## Building
 

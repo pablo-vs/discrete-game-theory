@@ -22,6 +22,11 @@ Standard game theory builds on real-valued payoffs and probability distributions
 existence via topological fixed-point theorems. We replace all of this with discrete, finite
 structures.
 
+The main goal of this section is to prove that all games with finite players and
+finite actions have at least one Nash equilibrium. Standard game theory uses a
+non-constructive fixed point theorem to do this, but in our setup we can give a
+constructive algorithm.
+
 # Sign Games
 
 A game has a finite set of players. Each player has a finite set of actions.
@@ -153,6 +158,9 @@ incomparability when we move from pure to mixed strategies.
 
 
 # Nash Existence
+%%%
+tag := "outside-dom"
+%%%
 
 Every finite game has a Nash equilibrium:
 
@@ -167,9 +175,6 @@ a mix of every action) and iteratively eliminates dominated actions.
 The algorithm maintains the *OutsideDom (OD)* invariant: for each player, every action outside
 the current face is dominated by every action inside:
 
-%%%
-tag := "outside-dom"
-%%%
 
 ```anchor OutsideDom
 def OutsideDom (i : I) (σ : Profile I V) : Prop :=
