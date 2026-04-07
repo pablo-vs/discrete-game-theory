@@ -24,16 +24,13 @@ jobs:
         with:
           build-args: >-
             DiscreteGameTheory
-            DiscreteGameTheoryExamples
             DiscreteGameTheory:literate
-            DiscreteGameTheoryExamples:literate
             generate-docs
 
       - name: Render HTML
         run: |
-          mkdir -p _site/lib _site/examples
+          mkdir -p _site/lib
           lake exe verso-html .lake/build/literate/DiscreteGameTheory _site/lib
-          lake exe verso-html .lake/build/literate/DiscreteGameTheoryExamples _site/examples
           lake exe generate-docs
           cp -r _out/html-multi _site/docs
 
@@ -68,16 +65,7 @@ jobs:
             <h2>Library Source</h2>
             <ul>
               <li><a href="lib/DiscreteGameTheory/Base/">Base</a> &mdash; Sign, Face, SignGame, Dominates, OutsideDom, Nash existence</li>
-              <li><a href="lib/DiscreteGameTheory/Refinement/">Refinement</a> &mdash; Betweenness, SignTower, Nash refinement sequence</li>
-              <li><a href="lib/DiscreteGameTheory/CompactGame/">CompactGame</a> &mdash; <code>nash_of_core</code>, <code>iterEmbedClose</code>, <code>shift</code></li>
-              <li><a href="lib/DiscreteGameTheory/SelfSimilarity/">SelfSimilarity</a> &mdash; <code>embedIter</code>, <code>restrictGame</code>, <code>multiLevelGame</code></li>
-              <li><a href="lib/DiscreteGameTheory/Invariance/">Invariance</a> &mdash; Ordinal invariance, affine invariance, counterexample</li>
-            </ul>
-
-            <h2>Examples Source</h2>
-            <ul>
-              <li><a href="examples/DiscreteGameTheoryExamples/Examples/">Examples</a> &mdash; PD, MP, coordination, pedagogical proofs</li>
-              <li><a href="examples/DiscreteGameTheoryExamples/GridTower/">GridTower</a> &mdash; Grid constructions, bilinear towers, compact game examples</li>
+              <li><a href="lib/DiscreteGameTheory/Examples/">Examples</a> &mdash; Prisoner's Dilemma, Matching Pennies, coordination games</li>
             </ul>
           </body>
           </html>

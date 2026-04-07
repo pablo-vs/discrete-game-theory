@@ -1,8 +1,11 @@
 import Mathlib.Data.Fintype.Basic
 import Mathlib.Data.Fintype.Card
+import Mathlib.Data.Fintype.Pi
 import Mathlib.Data.Fintype.Powerset
 import Mathlib.Data.Finset.Basic
 import Mathlib.Data.Finset.Card
+import Mathlib.Data.Finset.Sort
+import Mathlib.Data.List.Sublists
 import Mathlib.Logic.Function.Basic
 import Mathlib.Algebra.Order.BigOperators.Group.Finset
 import Mathlib.Tactic.FinCases
@@ -409,7 +412,14 @@ def IsNash (σ : Profile I V) : Prop :=
 
     This is the key invariant maintained by the Nash existence descent algorithm: it ensures
     that restricting a player's face to a dominating subface doesn't invalidate previous
-    elimination steps. -/
+    elimination steps.
+
+    **Game-theoretic interpretation.** `OutsideDom` is the invariant of *iterated
+    elimination of strictly dominated strategies* (IESDS): it is preserved under the
+    descent, and a profile where it holds can be interpreted as a state of the IESDS
+    algorithm in which every eliminated action is dominated by every surviving one.
+    Our condition is slightly stronger than classical rationalizability, which only
+    requires each eliminated action to be dominated by *some* mixed strategy. -/
 -- ANCHOR: OutsideDom
 def OutsideDom (i : I) (σ : Profile I V) : Prop :=
   ∀ v, v ∉ (σ i).1 → ∀ w, w ∈ (σ i).1 →
@@ -491,7 +501,7 @@ end OutsideDom
     in `σ i` (by OutsideDom), contradicting the fact that `b` witnesses the failure of
     domination. So the "problematic" action `b` must be inside the current face.
 
-    This is a technical lemma used by `exists_strictDom_sub` to show that strict deviations
+    This is a technical lemma used by `restrictStrictDom` to show that strict deviations
     can always be restricted to subfaces of the current face. -/
 private lemma outsideDom_witness_mem {i : I} {σ : Profile I V} {A : Face (V i)}
     (h_inv : G.OutsideDom i σ)
@@ -511,30 +521,35 @@ private lemma outsideDom_witness_mem {i : I} {σ : Profile I V} {A : Face (V i)}
     current face.
 
     If OutsideDom holds and player `i` has a strict deviation to some face `A`, then
-    there exists `A' = A ∩ σ i` which is also a strict deviation, is a proper subface
-    of `σ i`, and satisfies `A' ≠ σ i`. This is crucial for the descent algorithm:
-    it ensures each step strictly shrinks the deviating player's face. -/
-lemma exists_strictDom_sub {i : I} {σ : Profile I V} {A : Face (V i)}
-    (h_inv : G.OutsideDom i σ)
-    (h_dev : G.StrictDom i σ A) :
-    ∃ A' : Face (V i),
-      G.StrictDom i σ A' ∧ Face.IsSubface A' (σ i) ∧ A' ≠ σ i := by
-  obtain ⟨h_fwd, h_bwd⟩ := h_dev
-  obtain ⟨a, ha_σ, p, hp, b, hb_A, hn, hb_σ⟩ := outsideDom_witness_mem G h_inv h_bwd
-  let A' : Face (V i) := ⟨A.1 ∩ (σ i).1, ⟨b, Finset.mem_inter.mpr ⟨hb_A, hb_σ⟩⟩⟩
-  refine ⟨A', ⟨?_, ?_⟩, Finset.inter_subset_right, ?_⟩
-  · exact Dominates.mono_left G Finset.inter_subset_left h_fwd
-  · intro h_contra
-    exact absurd (h_contra a ha_σ p hp b (Finset.mem_inter.mpr ⟨hb_A, hb_σ⟩)) hn
-  · intro heq
-    have h_σ_sub_A : Face.IsSubface (σ i) A := by
-      intro x hx; exact (Finset.mem_inter.mp (heq ▸ hx)).1
-    apply h_bwd
-    intro x hx p' hp' y hy
-    by_cases hy_σ : y ∈ (σ i).1
-    · exact (Dominates.mono_left G h_σ_sub_A h_fwd) x hx p' hp' y hy_σ
-    · exact h_inv y hy_σ x hx x (Finset.mem_singleton_self _) p' hp'
-        y (Finset.mem_singleton_self _)
+    `A' = A ∩ σ i` is also a strict deviation, is a proper subface of `σ i`, and
+    satisfies `A' ≠ σ i`. This is crucial for the descent algorithm: it ensures each
+    step strictly shrinks the deviating player's face.
+
+    Returned as a subtype (data + proofs) rather than an existential, so it's usable
+    both in proof-level arguments and in the computable `findNashOf` descent. -/
+def restrictStrictDom {i : I} {σ : Profile I V} {A : Face (V i)}
+    (h_inv : G.OutsideDom i σ) (h_dev : G.StrictDom i σ A) :
+    { A' : Face (V i) //
+      G.StrictDom i σ A' ∧ Face.IsSubface A' (σ i) ∧ A' ≠ σ i } :=
+  ⟨⟨A.1 ∩ (σ i).1, by
+      obtain ⟨_, h_bwd⟩ := h_dev
+      obtain ⟨_, _, _, _, b, hb, _, hb_σ⟩ := outsideDom_witness_mem G h_inv h_bwd
+      exact ⟨b, Finset.mem_inter.mpr ⟨hb, hb_σ⟩⟩⟩, by
+    obtain ⟨h_fwd, h_bwd⟩ := h_dev
+    obtain ⟨a, ha_σ, p, hp, b, hb_A, hn, hb_σ⟩ := outsideDom_witness_mem G h_inv h_bwd
+    refine ⟨⟨?_, ?_⟩, Finset.inter_subset_right, ?_⟩
+    · exact Dominates.mono_left G Finset.inter_subset_left h_fwd
+    · intro h_contra
+      exact absurd (h_contra a ha_σ p hp b (Finset.mem_inter.mpr ⟨hb_A, hb_σ⟩)) hn
+    · intro heq
+      have h_σ_sub_A : Face.IsSubface (σ i) A := by
+        intro x hx; exact (Finset.mem_inter.mp (heq ▸ hx)).1
+      apply h_bwd
+      intro x hx p' hp' y hy
+      by_cases hy_σ : y ∈ (σ i).1
+      · exact (Dominates.mono_left G h_σ_sub_A h_fwd) x hx p' hp' y hy_σ
+      · exact h_inv y hy_σ x hx x (Finset.mem_singleton_self _) p' hp'
+          y (Finset.mem_singleton_self _)⟩
 
 -- ================================================================
 -- Section 11: Profile size and descent
@@ -566,53 +581,21 @@ lemma profileSize_decreases [Fintype I] {i : I} {σ : Profile I V} {A : Face (V 
 -- Section 12: Nash existence
 -- ================================================================
 
-/-- **Nash existence from OutsideDom**: given any profile satisfying the OutsideDom invariant,
-    there exists a Nash equilibrium.
+/-- **Nash existence from OutsideDom**: given any profile satisfying the OutsideDom
+    invariant, there exists a Nash equilibrium. Additionally tracks that the resulting
+    Nash profile `τ` is a subprofile of the starting profile `σ` and still satisfies
+    `OutsideDom`.
 
     This is the core of the Nash existence proof. The algorithm:
     1. If `σ` is already Nash, return it.
     2. Otherwise, some player `i` has a strict deviation to `A`.
-    3. By `exists_strictDom_sub`, restrict to `A' ⊆ σ i` with `A' ≠ σ i`.
+    3. By `restrictStrictDom`, get `A' ⊆ σ i` with `A' ≠ σ i` that is still a strict
+       deviation.
     4. Update `σ[i ↦ A']`. OutsideDom is preserved (by `preserved` and `preserved_other`).
     5. Profile size strictly decreases, so recurse.
 
     Termination is guaranteed because `profileSize` is a natural number that decreases
-    at each step. -/
-theorem nash_exists_of_outsideDom [Fintype I]
-    (σ : Profile I V)
-    (h_od : ∀ i, G.OutsideDom i σ) :
-    ∃ τ, G.IsNash τ := by
-  by_cases h : G.IsNash σ
-  · exact ⟨σ, h⟩
-  · simp only [IsNash, not_forall, not_not] at h
-    obtain ⟨i₀, A, hA⟩ := h
-    obtain ⟨A', hdev, hsub, hne⟩ := exists_strictDom_sub G (h_od i₀) hA
-    have hdec := profileSize_decreases hsub hne
-    exact nash_exists_of_outsideDom (σ[i₀ ↦ A']) (fun j => by
-      by_cases hij : j = i₀
-      · subst hij; exact OutsideDom.preserved G (h_od j) hsub hdev.1
-      · exact OutsideDom.preserved_other G hij (h_od j) hsub)
-  termination_by profileSize σ
-
-/-- **Main theorem**: every finite sign game has a Nash equilibrium.
-    Proved by starting from the fully mixed profile and applying the descent algorithm. -/
--- ANCHOR: nash_exists
-theorem nash_exists [Fintype I] [∀ i, Fintype (V i)] [∀ i, Nonempty (V i)] :
-    ∃ σ, G.IsNash σ :=
--- ANCHOR_END: nash_exists
-  nash_exists_of_outsideDom G (fun _ => Face.full) (fun i => OutsideDom.maximal G i)
-
--- ================================================================
--- Section 13: Nash existence with subface and OD tracking
--- ================================================================
-
-/-- Strengthened version of `nash_exists_of_outsideDom` that additionally tracks:
-    - The resulting Nash profile `τ` is a subprofile of the starting profile `σ`
-      (each player's face in `τ` is a subface of their face in `σ`).
-    - The OutsideDom invariant holds at the Nash profile `τ`.
-
-    This is used when the descent algorithm needs to be started from a non-full profile
-    (e.g., after embedding from a coarser level in the refinement tower). -/
+    at each step. For a directly executable version, see `findNashOf` below. -/
 theorem nash_exists_sub_of_outsideDom [Fintype I]
     (σ : Profile I V)
     (h_od : ∀ i, G.OutsideDom i σ) :
@@ -622,7 +605,7 @@ theorem nash_exists_sub_of_outsideDom [Fintype I]
   · exact ⟨σ, h, fun _ x hx => hx, h_od⟩
   · simp only [IsNash, not_forall, not_not] at h
     obtain ⟨i₀, A, hA⟩ := h
-    obtain ⟨A', hdev, hsub, hne⟩ := exists_strictDom_sub G (h_od i₀) hA
+    obtain ⟨A', hdev, hsub, hne⟩ := G.restrictStrictDom (h_od i₀) hA
     have hdec := profileSize_decreases hsub hne
     have h_od' : ∀ j, G.OutsideDom j (σ[i₀ ↦ A']) := fun j => by
       by_cases hij : j = i₀
@@ -640,6 +623,203 @@ theorem nash_exists_sub_of_outsideDom [Fintype I]
       have := hτ_sub j hx
       rwa [Function.update_of_ne hji] at this
   termination_by profileSize σ
+
+/-- **Main theorem**: every finite sign game has a Nash equilibrium.
+    Proved by starting from the fully mixed profile and applying the descent algorithm.
+
+    This is the *existence* statement — it uses `Classical.em` internally (via `by_cases`
+    on `IsNash`) and so is not directly executable. For an actual `#eval`-able function
+    returning a Nash profile, see `findNash` below, which requires `LinearOrder` on the
+    player and action types to make the deviation search computable. -/
+-- ANCHOR: nash_exists
+theorem nash_exists [Fintype I] [∀ i, Fintype (V i)] [∀ i, Nonempty (V i)] :
+    ∃ σ, G.IsNash σ :=
+-- ANCHOR_END: nash_exists
+  (G.nash_exists_sub_of_outsideDom (fun _ => Face.full)
+    (fun i => OutsideDom.maximal G i)).imp (fun _ h => h.1)
+
+-- ================================================================
+-- Section 13b: Computable Nash descent
+-- ================================================================
+
+/-!
+The existential theorems above (`nash_exists`, `nash_exists_sub_of_outsideDom`) are not
+directly executable: they're `theorem`s, and the descent uses `by_cases` on `IsNash` which
+falls back to `Classical.em`. This section provides their computable counterparts — `def`s
+`findNash` and `findNashOf` returning an actual Nash profile, ready for `#eval`.
+
+The algorithm is literally the same descent. The only differences are:
+* `Decidable` instances for `Dominates`, `StrictDom`, `IsNash` (so we can branch on
+  `IsNash` without invoking classical logic);
+* a computable search `findDev` that finds a strict deviation via `Finset.sort` +
+  `List.sublists` — this is why the computable versions require `LinearOrder` on `I` and
+  on each `V i`, while the existence theorems need only `Fintype`.
+
+The underlying `restrictStrictDom` is shared between both paths: it was already written as
+a computable `def` returning a subtype, so the existence theorems destructure it the same
+way they would destructure an existential.
+-/
+
+section Computable
+
+variable [Fintype I] [∀ i, Fintype (V i)]
+variable [LinearOrder I] [∀ i, LinearOrder (V i)]
+
+/-- `Dominates` is decidable given finiteness of players and actions. -/
+instance Dominates.instDecidable (i : I) (σ : Profile I V) (A B : Face (V i)) :
+    Decidable (G.Dominates i σ A B) := by
+  unfold Dominates ConsistentAt
+  infer_instance
+
+/-- `StrictDom` is decidable. -/
+instance StrictDom.instDecidable (i : I) (σ : Profile I V) (A : Face (V i)) :
+    Decidable (G.StrictDom i σ A) := by
+  unfold StrictDom
+  infer_instance
+
+/-- `IsNash` is decidable. -/
+instance IsNash.instDecidable (σ : Profile I V) : Decidable (G.IsNash σ) := by
+  unfold IsNash
+  infer_instance
+
+/-- Convert a list of vertices into a face, given a proof that it's nonempty. -/
+private def listToFace {V : Type*} [DecidableEq V] (l : List V) (h : l ≠ []) : Face V :=
+  ⟨l.toFinset, by
+    cases l with
+    | nil => exact absurd rfl h
+    | cons v _ => exact ⟨v, List.mem_toFinset.mpr List.mem_cons_self⟩⟩
+
+/-- Computable search for a strict deviation at a single player. Iterates over all nonempty
+    subfaces of `σ i` via `List.sublists` of the sorted vertex list. -/
+def findDevAt (σ : Profile I V) (i : I) : Option (Face (V i)) :=
+  ((σ i).1.sort (· ≤ ·)).sublists.findSome? fun sub =>
+    if hne : sub ≠ [] then
+      let A : Face (V i) := listToFace sub hne
+      if G.StrictDom i σ A then some A else none
+    else none
+
+/-- Computable search for a strict deviation in `σ`. Iterates players in sorted order;
+    for each player, iterates subfaces of `σ i` via `List.sublists`. -/
+def findDev (σ : Profile I V) : Option ((i : I) × Face (V i)) :=
+  ((Finset.univ : Finset I).sort (· ≤ ·)).findSome? fun i =>
+    (G.findDevAt σ i).map fun A => ⟨i, A⟩
+
+lemma findDevAt_eq_some_strictDom {σ : Profile I V} {i : I} {A : Face (V i)}
+    (h : G.findDevAt σ i = some A) : G.StrictDom i σ A := by
+  unfold findDevAt at h
+  rw [List.findSome?_eq_some_iff] at h
+  obtain ⟨_, sub, _, _, hfa, _⟩ := h
+  by_cases hne : sub ≠ []
+  · rw [dif_pos hne] at hfa
+    by_cases hsd : G.StrictDom i σ (listToFace sub hne)
+    · rw [if_pos hsd] at hfa
+      have heq : listToFace sub hne = A := Option.some.inj hfa
+      exact heq ▸ hsd
+    · rw [if_neg hsd] at hfa; cases hfa
+  · rw [dif_neg hne] at hfa; cases hfa
+
+lemma findDev_eq_some_strictDom {σ : Profile I V} {x : (i : I) × Face (V i)}
+    (h : G.findDev σ = some x) : G.StrictDom x.1 σ x.2 := by
+  unfold findDev at h
+  rw [List.findSome?_eq_some_iff] at h
+  obtain ⟨_, i, _, _, hi, _⟩ := h
+  match hfd : G.findDevAt σ i, hi with
+  | none, hi => rw [Option.map_none] at hi; cases hi
+  | some A, hi =>
+      rw [Option.map_some] at hi
+      obtain rfl : x = ⟨i, A⟩ := (Option.some.inj hi).symm
+      exact G.findDevAt_eq_some_strictDom hfd
+
+/-- If no proper subface of `σ i` is found by `findDevAt`, and `OutsideDom` holds at `i`,
+    then no face is a strict deviation for player `i`. -/
+lemma findDevAt_eq_none_no_strictDom {σ : Profile I V} {i : I}
+    (h_od : G.OutsideDom i σ) (h : G.findDevAt σ i = none)
+    {A : Face (V i)} (hStrict : G.StrictDom i σ A) : False := by
+  -- By restrictStrictDom, there is a subface A' ⊆ σ i, A' ≠ σ i, which is a strict dev.
+  obtain ⟨A', hA'dev, hA'sub, _⟩ := G.restrictStrictDom h_od hStrict
+  -- A'.1 is a nonempty subset of (σ i).1. Let sub = (σ i).1.sort.filter (· ∈ A'.1).
+  -- sub is a sublist of (σ i).1.sort, and sub.toFinset = A'.1.
+  let l := (σ i).1.sort (· ≤ ·)
+  let sub := l.filter (· ∈ A'.1)
+  have hsub_sub : sub ∈ l.sublists := by
+    rw [List.mem_sublists]
+    exact List.filter_sublist
+  have hsub_ne : sub ≠ [] := by
+    obtain ⟨v, hv⟩ := A'.2
+    intro hcontra
+    have : v ∈ sub := by
+      simp only [sub, List.mem_filter, decide_eq_true_eq]
+      refine ⟨?_, hv⟩
+      simp only [l, Finset.mem_sort]
+      exact hA'sub hv
+    rw [hcontra] at this
+    exact List.not_mem_nil this
+  have hsub_toFinset : sub.toFinset = A'.1 := by
+    ext x
+    simp only [sub, List.mem_toFinset, List.mem_filter, decide_eq_true_eq, l, Finset.mem_sort]
+    constructor
+    · rintro ⟨_, hx⟩; exact hx
+    · intro hx; exact ⟨hA'sub hx, hx⟩
+  -- Now show findDevAt would have returned some at this sublist
+  unfold findDevAt at h
+  rw [List.findSome?_eq_none_iff] at h
+  specialize h sub hsub_sub
+  simp only [hsub_ne, ne_eq, not_false_eq_true, ↓reduceDIte] at h
+  -- h says the if branch returned none, so strict dom fails
+  have hface_eq : listToFace sub hsub_ne = A' := by
+    apply Subtype.ext
+    show sub.toFinset = A'.1
+    exact hsub_toFinset
+  rw [hface_eq, if_pos hA'dev] at h
+  exact Option.some_ne_none _ h
+
+lemma findDev_eq_none_isNash {σ : Profile I V} (h_od : ∀ i, G.OutsideDom i σ)
+    (h : G.findDev σ = none) : G.IsNash σ := by
+  intro i A hStrict
+  unfold findDev at h
+  rw [List.findSome?_eq_none_iff] at h
+  have hmem : i ∈ (Finset.univ : Finset I).sort (· ≤ ·) := by
+    rw [Finset.mem_sort]; exact Finset.mem_univ _
+  specialize h i hmem
+  match hfd : G.findDevAt σ i with
+  | none => exact G.findDevAt_eq_none_no_strictDom (h_od i) hfd hStrict
+  | some A' =>
+      rw [hfd] at h
+      simp at h
+
+/-- **Computable Nash descent**: given a profile satisfying `OutsideDom`, returns an actual
+    Nash equilibrium as data (subtype). This is the executable counterpart of
+    `nash_exists_sub_of_outsideDom` — same algorithm, but with decidable branching and a
+    sorted search instead of `by_cases` + `Classical.em`, at the cost of requiring
+    `LinearOrder I` and `LinearOrder (V i)`. -/
+def findNashOf (σ : Profile I V) (h_od : ∀ i, G.OutsideDom i σ) :
+    { τ : Profile I V // G.IsNash τ } :=
+  match hfd : G.findDev σ with
+  | none => ⟨σ, G.findDev_eq_none_isNash h_od hfd⟩
+  | some ⟨i₀, A⟩ =>
+      have hdev : G.StrictDom i₀ σ A := G.findDev_eq_some_strictDom hfd
+      let r := G.restrictStrictDom (h_od i₀) hdev
+      have hsub : Face.IsSubface r.1 (σ i₀) := r.2.2.1
+      have hne : r.1 ≠ σ i₀ := r.2.2.2
+      have hdec : profileSize (σ[i₀ ↦ r.1]) < profileSize σ :=
+        profileSize_decreases hsub hne
+      findNashOf (σ[i₀ ↦ r.1]) (fun j => by
+        by_cases hij : j = i₀
+        · subst hij; exact OutsideDom.preserved G (h_od j) hsub r.2.1.1
+        · exact OutsideDom.preserved_other G hij (h_od j) hsub)
+  termination_by profileSize σ
+
+/-- **Computable Nash existence**: starting from the fully mixed profile, returns a Nash
+    equilibrium as data. Executable counterpart of `nash_exists`; can be `#eval`-ed directly
+    on a concrete `SignGame`. See `findNashOf` for the version with an arbitrary starting
+    profile. -/
+-- ANCHOR: findNash
+def findNash [Nonempty I] [∀ i, Nonempty (V i)] :
+    { σ : Profile I V // G.IsNash σ } :=
+-- ANCHOR_END: findNash
+  G.findNashOf (fun _ => Face.full) (fun i => OutsideDom.maximal G i)
+
+end Computable
 
 -- ================================================================
 -- Section 14: Building SignGame from payoffs

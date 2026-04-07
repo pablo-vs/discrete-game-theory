@@ -1,14 +1,10 @@
 name = "discrete_game_theory"
 version = "0.1.0"
-defaultTargets = ["DiscreteGameTheory", "DiscreteGameTheoryExamples"]
+defaultTargets = ["DiscreteGameTheory"]
 
 [[lean_lib]]
 name = "DiscreteGameTheory"
 globs = ["DiscreteGameTheory", "DiscreteGameTheory.+"]
-
-[[lean_lib]]
-name = "DiscreteGameTheoryExamples"
-globs = ["DiscreteGameTheoryExamples", "DiscreteGameTheoryExamples.+"]
 
 [[lean_lib]]
 name = "Docs"

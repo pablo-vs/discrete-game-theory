@@ -1,5 +1,2 @@
 import DiscreteGameTheory.Base
-import DiscreteGameTheory.Refinement
-import DiscreteGameTheory.SelfSimilarity
-import DiscreteGameTheory.Invariance
-import DiscreteGameTheory.CompactGame
+import DiscreteGameTheory.Examples

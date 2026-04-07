@@ -217,4 +217,41 @@ theorem mp'_no_pureNash :
     IsPureNash, Sign.nonneg, Function.update] at *
   cases h0 : p 0 <;> cases h1 : p 1 <;> simp_all
 
+-- ================================================================
+-- Executing the Nash descent: `findNash` computes an equilibrium
+-- ================================================================
+
+/-!
+Unlike `nash_exists`, which is a pure existence theorem, `findNash` is a `def`
+returning a concrete Nash profile. It runs the descent algorithm as a terminating
+program, so we can `#eval` it to see the equilibrium.
+
+Prisoner's Dilemma has a unique pure Nash equilibrium at (D, D). Running the
+descent from the fully mixed profile `{C, D}²` converges there:
+```
+#eval (pd.findNash.1 0).1   -- {false}  (D for player 0)
+#eval (pd.findNash.1 1).1   -- {false}  (D for player 1)
+```
+
+Matching Pennies has no pure Nash equilibrium, but the fully mixed profile is
+an ordinal Nash equilibrium — no proper subface strictly dominates the full face.
+The descent recognises this immediately and returns the starting profile:
+```
+#eval (mp.findNash.1 0).1   -- {false, true}
+#eval (mp.findNash.1 1).1   -- {false, true}
+```
+-/
+
+/-- The descent finds the unique pure Nash of the Prisoner's Dilemma. Since the
+    whole algorithm is computable, `decide` discharges the claim by running it. -/
+theorem pd_findNash_is_DD :
+    (pd.findNash.1 0).1 = {false} ∧ (pd.findNash.1 1).1 = {false} := by
+  native_decide
+
+/-- The descent leaves Matching Pennies at the fully mixed profile — the ordinal
+    Nash equilibrium. -/
+theorem mp_findNash_is_full :
+    (mp.findNash.1 0).1 = {false, true} ∧ (mp.findNash.1 1).1 = {false, true} := by
+  native_decide
+
 end Base
